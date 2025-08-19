@@ -40,7 +40,9 @@ entity SPI_rx_tx_Controller is
         tx_ready_in     : in    std_logic;
         dout            : out   std_logic_vector(7 downto 0);
         
-        start_in        : in    std_logic
+        start_in        : in    std_logic;
+
+		log_data_out	: out	std_logic_vector(7 downto 0)
     );
 end SPI_rx_tx_Controller;
 
@@ -56,7 +58,6 @@ signal loop_counterrx   : integer range 0 to 1024 :=0;
 constant array_length : integer := data_count + 10;
 type arraytype is array (0 to data_count + 9) of std_logic_vector(7 downto 0);
 signal tx_array : arraytype := (TXBUFFER1, "00000000", "00000000", byte_data, TXFCTRL1, TXFCTRL2, "00000000", "00000000", SYSCTRL1, SYSCTRL2, SYSCTRL3);
-signal rx_array : arraytype := (others <= '0');
 
 begin
     process(clk)
@@ -98,7 +99,7 @@ begin
 				elsif loop_counterrx = 0 then
 					rx_valid_out <= '1';
 				else
-					rx_array(loop_counterrx) <= din;
+					log_data_out <= din;
 					if rx_ready_in = '1' then
 						rx_valid_out <= '0';
 						loop_counterrx <= loop_counterrx + 1;
