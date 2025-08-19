@@ -22,9 +22,9 @@ entity SPI_rx_tx_Controller is
         SYSCTRL2    : std_logic_vector(7 downto 0) :="00000000";
         SYSCTRL3    : std_logic_vector(7 downto 0) :="01000000";
         
-        data_count  : integer := 0
+        data_count  : integer := 1;
 
-
+		byte_data   : std_logic_vector(7 downto 0) := "11111111"
     );
     Port (
         clk             : in    std_logic;
@@ -46,19 +46,18 @@ end SPI_rx_tx_Controller;
 
 architecture Behavioral of SPI_rx_tx_Controller is
 signal txfctrl_settings      : std_logic_vector(15 downto 0);
-signal TXFCTRL3  : std_logic_vector(7 downto 0);
-signal TXFCTRL4  : std_logic_vector(7 downto 0);
-signal TXBUFFER2 : std_logic_vector(7 downto 0);
-signal TXBUFFER3 : std_logic_vector(7 downto 0);
-signal TXBUFFER4 : std_logic_vector(7 downto 0);
 
 signal start_prev : std_logic :='0';
-signal active     : boolean :=false;
+signal txactive     : boolean := false;
+signal recv_activated : boolean := false;
 
-signal loop_counter   : integer range 0 to 11 :=0;
+signal loop_countertx   : integer range 0 to 1024 :=0;
+signal loop_counterrx   : integer range 0 to 1024 :=0;
 constant array_length : integer := data_count + 10;
-type tx_arrayt is array (0 to data_count - 1) of std_logic_vector(7 downto 0);
-signal tx_array : tx_arrayt := (TXBUFFER1, TXBUFFER2, TXBUFFER3, TXBUFFER4, TXFCTRL1, TXFCTRL2, TXFCTRL3, TXFCTRL4, SYSCTRL1, SYSCTRL2, SYSCTRL3);
+type arraytype is array (0 to data_count + 9) of std_logic_vector(7 downto 0);
+signal tx_array : arraytype := (TXBUFFER1, "00000000", "00000000", byte_data, TXFCTRL1, TXFCTRL2, "00000000", "00000000", SYSCTRL1, SYSCTRL2, SYSCTRL3);
+signal rx_array : arraytype := (others <= '0');
+
 begin
     process(clk)
         begin
@@ -66,29 +65,47 @@ begin
         pol_out <= pol_value;
         
         txfctrl_settings <= TFLEN & TFLE & R & TXBR & TR;
-        TXFCTRL3 <= txfctrl_settings(7 downto 0);
-        TXFCTRL4 <= txfctrl_settings(15 downto 8);
-        TXBUFFER3 <= EXTADDR & TXBUFFERSUB(6 downto 0);
-        TXBUFFER4 <= TXBUFFERSUB(14 downto 7);
-        
+        tx_array(6) <= txfctrl_settings(7 downto 0);
+        tx_array(7) <= txfctrl_settings(15 downto 8);
+        tx_array(1) <= EXTADDR & TXBUFFERSUB(6 downto 0);
+        tx_array(2) <= TXBUFFERSUB(14 downto 7);
+		
         if rising_edge(clk) then
             if start_in = '1' and start_prev = '0' then
-                active <= true;
+                txactive <= true;
             end if;
-            if active = true then
-                if loop_counter = 11 then
-                    loop_counter <= 0;
-                    
-                    active <= false;
+			start_prev <= start_in;
+            if txactive = true then
+                if loop_countertx = 10 + data_count then
+                    loop_countertx <= 0;
+					txactive <= false;
+					recv_activated <= true;
                 else
-                    dout <= tx_array(loop_counter);
+                    dout <= tx_array(loop_countertx);
                     tx_valid_out <= '1';
                     if tx_ready_in = '1' then
-                        loop_counter <= loop_counter;
+						tx_valid_out <= '0';
+                        loop_countertx <= loop_countertx + 1;
                     end if;
-                    
-                end if;
-            end if;
+				end if;
+			end if;
+			
+
+			if recv_activated then
+				if loop_counterrx = 10 + data_count + 1 then
+					loop_counterrx <= 0;
+					recv_activated <= false;
+				elsif loop_counterrx = 0 then
+					rx_valid_out <= '1';
+				else
+					rx_array(loop_counterrx) <= din;
+					if rx_ready_in = '1' then
+						rx_valid_out <= '0';
+						loop_counterrx <= loop_counterrx + 1;
+					end if;
+				end if;
+			end if;
+			
         end if;
     end process; 
 end Behavioral;
