@@ -8,8 +8,7 @@ entity SPI_Transmitter is
         pol_out            : out std_logic; -- always 0
         pha_out            : out std_logic; -- always 0
         mosi_out           : out std_logic; -- byte to send
-        btn                : in  std_logic; -- button pressed = start sending
-        led                : out std_logic  -- led to test code
+        btn                : in  std_logic -- button pressed = start sending
     );
 end SPI_Transmitter;
 
