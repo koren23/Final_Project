@@ -1,47 +1,75 @@
-#include "lwip/init.h"
-#include "lwip/udp.h"
-#include "lwip/ip_addr.h"
-#include "lwip/netif.h"
-#include "netif/xadapter.h"
 #include "xparameters.h"
+#include "xil_printf.h"
+#include "lwip/init.h"
+#include "lwip/netif.h"
+#include "lwip/udp.h"
+#include "netif/xadapter.h"
+#include "xemacps.h"
 
-#define UDP_SERVER_PORT 12345 // can be changed to any port
+static struct netif server_netif;
+struct netif *echo_netif;
 
-void udp_receive_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,  
-const ip_addr_t *addr, u16_t port) {
-    if (p != NULL) { // function is called when a UDP packet is received
+void udp_receive_callback(void *arg, struct udp_pcb *pcb,
+                          struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+    if (p != NULL) {
+        xil_printf("Received %d bytes from %s:%d\n", p->len, ipaddr_ntoa(addr), port);
+        xil_printf("Data: %.*s\n", p->len, (char *)p->payload);
         pbuf_free(p);
     }
 }
 
 int main() {
-    struct netif server_netif;
-    struct udp_pcb *udp_pcb; // initialize lwIP stack
+    ip_addr_t ipaddr, netmask, gw;
+    u8_t mac_address[] = {0x00, 0x0A, 0x35, 0x00, 0x01, 0x02};
 
-    lwip_init(); // declare network interface
+    XEmacPs_Config *emac_config;
+    XEmacPs emac;
 
-    if (xemac_add(&server_netif, NULL, NULL, NULL, NULL, XPAR_XEMACPS_0_BASEADDR) == NULL) { // adds the ethernet interface
+    lwip_init();
+
+    IP4_ADDR(&ipaddr, 192, 168, 1, 10);
+    IP4_ADDR(&netmask, 255, 255, 255, 0);
+    IP4_ADDR(&gw, 192, 168, 1, 1);
+
+    emac_config = XEmacPs_LookupConfig(0);
+    if (emac_config == NULL) {
+        xil_printf("EMAC config failed\n");
         return -1;
     }
 
-    netif_set_default(&server_netif); // sets this interface as the default and activates it
-    netif_set_up(&server_netif);
-
-    udp_pcb = udp_new(); // creates a new UDP control block.
-    if (!udp_pcb) { 
+    if (XEmacPs_CfgInitialize(&emac, emac_config, emac_config->BaseAddress) != XST_SUCCESS) {
+        xil_printf("EMAC init failed\n");
         return -1;
     }
 
-    if (udp_bind(udp_pcb, IP_ADDR_ANY, UDP_SERVER_PORT) != ERR_OK) { 
-        udp_remove(udp_pcb); // binds the UDP PCB to any IP address and the defined port
-        return -1; // can be edited to be the other way around if needed
+    echo_netif = &server_netif;
+    if (!xemac_add(echo_netif, &ipaddr, &netmask, &gw, mac_address, emac_config->BaseAddress)) {
+        xil_printf("xemac_add failed\n");
+        return -1;
     }
 
-    udp_recv(udp_pcb, udp_receive_callback, NULL);
+    netif_set_default(echo_netif);
+    netif_set_up(echo_netif);
+    netif_set_link_up(echo_netif);
 
+    xil_printf("Network up with IP: %s\n", ipaddr_ntoa(&ipaddr));
+    struct udp_pcb *pcb;
+    pcb = udp_new();
+    if (!pcb) {
+        xil_printf("UDP PCB create failed\n");
+        return -1;
+    }
 
-    while(1) {
-        xemacif_input(&server_netif);
+    if (udp_bind(pcb, IP_ADDR_ANY, 12345) != ERR_OK) {
+        xil_printf("UDP bind failed\n");
+        return -1;
+    }
+
+    udp_recv(pcb, udp_receive_callback, NULL);
+    xil_printf("Listening for UDP packets on port 12345...\n");
+
+    while (1) {
+        xemacif_input(echo_netif);
     }
 
     return 0;
