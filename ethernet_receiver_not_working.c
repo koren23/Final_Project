@@ -1,75 +1,93 @@
 #include "xparameters.h"
+#include "xparameters_ps.h"
 #include "xil_printf.h"
-#include "lwip/init.h"
-#include "lwip/netif.h"
 #include "lwip/udp.h"
+#include "lwip/init.h"
+#include "lwip/ip_addr.h"
+#include "lwip/pbuf.h"
 #include "netif/xadapter.h"
-#include "xemacps.h"
 
-static struct netif server_netif;
-struct netif *echo_netif;
+#define LISTEN_PORT 5001
 
-void udp_receive_callback(void *arg, struct udp_pcb *pcb,
-                          struct pbuf *p, const ip_addr_t *addr, u16_t port) {
+struct udp_pcb *receiver_pcb;
+struct netif server_netif;
+
+u8_t mac_address[6] = {0x00, 0x18, 0x3E, 0x04, 0x81, 0xD6};
+
+void print_ip(const char *msg, ip_addr_t *ip)
+{
+    xil_printf("%s: %d.%d.%d.%d\n", msg,
+               ip4_addr1(ip),
+               ip4_addr2(ip),
+               ip4_addr3(ip),
+               ip4_addr4(ip));
+}
+
+void udp_receive_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p,
+                          const ip_addr_t *addr, u16_t port)
+{
+    (void)arg;
+    (void)pcb;
+
     if (p != NULL) {
-        xil_printf("Received %d bytes from %s:%d\n", p->len, ipaddr_ntoa(addr), port);
-        xil_printf("Data: %.*s\n", p->len, (char *)p->payload);
+        char msg[256] = {0};
+        size_t len = (p->len < sizeof(msg) - 1) ? p->len : sizeof(msg) - 1;
+        memcpy(msg, p->payload, len);
+        msg[len] = '\0';
+
+        xil_printf("Received from %d.%d.%d.%d:%d -> %s\n",
+                   ip4_addr1(addr), ip4_addr2(addr), ip4_addr3(addr), ip4_addr4(addr),
+                   port, msg);
+
         pbuf_free(p);
     }
 }
 
-int main() {
-    ip_addr_t ipaddr, netmask, gw;
-    u8_t mac_address[] = {0x00, 0x0A, 0x35, 0x00, 0x01, 0x02};
+void udp_receiver_init()
+{
+    receiver_pcb = udp_new();
+    if (!receiver_pcb) {
+        xil_printf("Failed to create receiver PCB\n");
+        return;
+    }
 
-    XEmacPs_Config *emac_config;
-    XEmacPs emac;
+    err_t err = udp_bind(receiver_pcb, IP_ADDR_ANY, LISTEN_PORT);
+    if (err != ERR_OK) {
+        xil_printf("UDP bind failed with error %d\n", err);
+        return;
+    }
+
+    udp_recv(receiver_pcb, udp_receive_callback, NULL);
+    xil_printf("UDP receiver initialized on port %d\n", LISTEN_PORT);
+}
+
+int main()
+{
+    ip_addr_t ipaddr, netmask, gw;
+    xil_printf("Starting lwIP UDP Receiver Example\n");
+
+    IP4_ADDR(&ipaddr, 192, 168, 0, 20);
+    IP4_ADDR(&netmask, 255, 255, 255, 0);
+    IP4_ADDR(&gw, 192, 168, 0, 21);
 
     lwip_init();
+    struct netif *netif = &server_netif;
 
-    IP4_ADDR(&ipaddr, 192, 168, 1, 10);
-    IP4_ADDR(&netmask, 255, 255, 255, 0);
-    IP4_ADDR(&gw, 192, 168, 1, 1);
-
-    emac_config = XEmacPs_LookupConfig(0);
-    if (emac_config == NULL) {
-        xil_printf("EMAC config failed\n");
+    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_address, 0xe000b000)) {
+        xil_printf("Error adding network interface\n");
         return -1;
     }
 
-    if (XEmacPs_CfgInitialize(&emac, emac_config, emac_config->BaseAddress) != XST_SUCCESS) {
-        xil_printf("EMAC init failed\n");
-        return -1;
-    }
+    netif_set_default(netif);
+    netif_set_up(netif);
+    xil_printf("Link is %s\n", netif_is_link_up(netif) ? "up" : "down");
 
-    echo_netif = &server_netif;
-    if (!xemac_add(echo_netif, &ipaddr, &netmask, &gw, mac_address, emac_config->BaseAddress)) {
-        xil_printf("xemac_add failed\n");
-        return -1;
-    }
+    print_ip("Board IP", &ipaddr);
 
-    netif_set_default(echo_netif);
-    netif_set_up(echo_netif);
-    netif_set_link_up(echo_netif);
-
-    xil_printf("Network up with IP: %s\n", ipaddr_ntoa(&ipaddr));
-    struct udp_pcb *pcb;
-    pcb = udp_new();
-    if (!pcb) {
-        xil_printf("UDP PCB create failed\n");
-        return -1;
-    }
-
-    if (udp_bind(pcb, IP_ADDR_ANY, 12345) != ERR_OK) {
-        xil_printf("UDP bind failed\n");
-        return -1;
-    }
-
-    udp_recv(pcb, udp_receive_callback, NULL);
-    xil_printf("Listening for UDP packets on port 12345...\n");
+    udp_receiver_init();
 
     while (1) {
-        xemacif_input(echo_netif);
+        xemacif_input(netif);
     }
 
     return 0;
