@@ -117,21 +117,15 @@
 #include "xil_smc.h"
 #endif
 
-#define PHY_REG_CR              0x00 // Basic Control Register
-#define PHY_REG_SR              0x01 // Basic Status Register
-#define PHY_CR_RESET_MASK       0x8000
-#define PHY_CR_RESTART_AN       0x0200
-#define PHY_CR_AN_ENABLE        0x1000
-#define PHY_REG_1000_ADVERTISE  0x09 // 1000BASE-T Control Register
-#define PHY_RESET_MASK          0x8000
-#define PHY_CR_RESTART_AN       0x0200
-#define PHY_CR_AN_ENABLE        0x1000
+#define PHY_REG_CR              0x00  // control register
+#define PHY_REG_SR              0x01 // status register
+#define PHY_REG_1000_ADVERTISE  0x09 // 1000BASE-T control register
 
-// 1000BASE-T Advertisement Register Masks
-#define ADVERTISE_1000FULL      0x0200
-
-// PHY Status Register Bits
-#define PHY_SR_AUTONEG_DONE     0x0020
+#define PHY_CR_RESTART_AN       0x0200 // restart the auto-negotiation process (bit 9 of register 0)
+#define PHY_CR_AN_ENABLE        0x1000 // enable auto-negotiation (bit 12 of register 0)
+#define PHY_RESET_MASK          0x8000 // set to reset the PHY (bit 15 of register 0)
+#define ADVERTISE_1000FULL      0x0200 // advertise 1000BASE-T full-duplex capability (bit 9 of register 9)
+#define PHY_SR_AUTONEG_DONE     0x0020 // indicates auto-negotiation is complete (bit 5 of register 1)
 
 
 
@@ -379,29 +373,34 @@ u32_t phy_setup_emacps(XEmacPs *xemacpsp, u32_t phy_addr)
 {
     u16 control;
 
-    // Set the PHY to 1 Gbps full duplex manually
-    // This assumes the PHY supports this and is properly connected.
-
-    // Reset PHY
+    // write to PHY Control Register (register 0) to reset the PHY
+    // 0x8000 sets bit 15 (Reset), which causes the PHY to reset
     XEmacPs_PhyWrite(xemacpsp, phy_addr, PHY_REG_CR, PHY_RESET_MASK);
-    usleep(100000); // wait for reset to complete
 
-    // Set advertise to 1 Gbps full duplex only
+    // wait for 100 milliseconds to allow PHY reset to complete
+    usleep(100000);
+
+    // advertise 1000BASE-T full duplex capability in register 9 (1000BASE-T Control)
+    // 0x0200 sets bit 9: advertise 1000 Mbps full duplex mode
     XEmacPs_PhyWrite(xemacpsp, phy_addr, PHY_REG_1000_ADVERTISE, ADVERTISE_1000FULL);
 
-    // Set control register: Restart auto-negotiation, enable auto-negotiation
+    // enable auto-negotiation and restart it by writing to control register (register 0)
+    // bit 12 (0x1000) = auto-negotiation enable
+    // bit 9  (0x0200) = restart auto-negotiation
     XEmacPs_PhyWrite(xemacpsp, phy_addr, PHY_REG_CR, PHY_CR_RESTART_AN | PHY_CR_AN_ENABLE);
 
-    // Wait for auto-negotiation to complete (optional)
-    // You could add a timeout here
     u16 status;
+
+    // poll the PHY status register (register 1) until auto-negotiation is complete
+    // bit 5 (0x0020) = auto-negotiation complete
     do {
         XEmacPs_PhyRead(xemacpsp, phy_addr, PHY_REG_SR, &status);
     } while (!(status & PHY_SR_AUTONEG_DONE));
 
-    // Set MAC speed to 1 Gbps
+    // once auto-negotiation is complete, set the MAC speed to 1000 Mbps
     XEmacPs_SetOperatingSpeed(xemacpsp, 1000);
 
+    // return the operating speed (1000 Mbps)
     return 1000;
 }
 
