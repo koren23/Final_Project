@@ -4,33 +4,30 @@ use IEEE.STD_LOGIC_1164.ALL;
 entity SPI_Transmitter is
     port(
         clk                : in  std_logic; -- 100MHZ
-        cs_out             : out std_logic; -- drop to 0 to start exchange
-        pol_out            : out std_logic; -- always 0
-        pha_out            : out std_logic; -- always 0
         mosi_out           : out std_logic; -- byte to send
-        btn                : in  std_logic -- button pressed = start sending
+        ready_in           : in  std_logic; 
+        valid_out          : out std_logic;
+        din                : in  std_logic_vector(7 downto 0)
     );
 end SPI_Transmitter;
 
 architecture Behavioral of SPI_Transmitter is
-    signal send_counter       : integer range 0 to 9              :=0; -- counter for data sending loop
+    signal send_counter       : integer range 0 to 9              :=0;
     signal data_buffer        : std_logic_vector(7 downto 0)      := (others => '0'); -- buffer for transmittion
     signal active             : boolean                           := false; -- true when sending data
-    signal btn_prev           : std_logic                         := '0'; -- previous state of button
+    signal ready_prev         : std_logic                         := '0'; -- previous state of ready can be removed later
     signal clock_counter      : integer range 0 to 5              := 0; -- dividing 100MHZ to 20MHZ
 begin
-    pha_out <= '0';
-    pol_out <= '0';
     process(clk)
         begin
         if rising_edge(clk) then
-        
---     on button rising edge active <= true (stays true until is done transmitting)        
-            if btn = '1' and btn_prev = '0' then
+            valid_out <= '0';
+--     on ready rising edge active <= true (stays true until is done transmitting)        
+            if ready_in = '1' and ready_prev = '0' then
                 active <= true;
-                data_buffer <= "11111111";
+                data_buffer <= din;
             end if;
-            btn_prev <= btn; -- save prev value
+            ready_prev <= ready_in; -- save prev value
             
             
         
@@ -38,20 +35,18 @@ begin
             if clock_counter = 5 then
                 clock_counter <= 0;
                 
-                if active = true then       
-                    cs_out <= '0';     
-                    
+                if active = true then         
+                  
 --          byte send counter logic
                     if send_counter >= 8 then
                         mosi_out <= '0';
                         active <= false;
                         send_counter <= 0;
+                        valid_out <= '1';
                     else
                         mosi_out <= data_buffer(7 - send_counter); -- MSB to LSB
                         send_counter <= send_counter + 1;
                     end if;
-                else
-                    cs_out <= '1';
                 end if;
 
             else
