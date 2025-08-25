@@ -117,6 +117,25 @@
 #include "xil_smc.h"
 #endif
 
+#define PHY_REG_CR              0x00 // Basic Control Register
+#define PHY_REG_SR              0x01 // Basic Status Register
+#define PHY_CR_RESET_MASK       0x8000
+#define PHY_CR_RESTART_AN       0x0200
+#define PHY_CR_AN_ENABLE        0x1000
+#define PHY_REG_1000_ADVERTISE  0x09 // 1000BASE-T Control Register
+#define PHY_RESET_MASK          0x8000
+#define PHY_CR_RESTART_AN       0x0200
+#define PHY_CR_AN_ENABLE        0x1000
+
+// 1000BASE-T Advertisement Register Masks
+#define ADVERTISE_1000FULL      0x0200
+
+// PHY Status Register Bits
+#define PHY_SR_AUTONEG_DONE     0x0020
+
+
+
+
 #define PHY_BMCR				0x0000
 #define PHY_DETECT_REG  						1
 #define PHY_IDENTIFIER_1_REG					2
@@ -356,73 +375,36 @@ u32_t pcs_setup_emacps (XEmacPs *xemacps)
 }
 #endif
 
-u32_t phy_setup_emacps (XEmacPs *xemacpsp, u32_t phy_addr)
+u32_t phy_setup_emacps(XEmacPs *xemacpsp, u32_t phy_addr)
 {
-	u32_t link_speed;
-	u32_t conv_present = 0;
-	u32_t convspeeddupsetting = 0;
-	u32_t convphyaddr = 0;
+    u16 control;
 
-#ifdef XPAR_GMII2RGMIICON_0N_ETH0_ADDR
-	convphyaddr = XPAR_GMII2RGMIICON_0N_ETH0_ADDR;
-	conv_present = 1;
-#endif
-#ifdef XPAR_GMII2RGMIICON_0N_ETH1_ADDR
-	convphyaddr = XPAR_GMII2RGMIICON_0N_ETH1_ADDR;
-	conv_present = 1;
-#endif
+    // Set the PHY to 1 Gbps full duplex manually
+    // This assumes the PHY supports this and is properly connected.
 
-#ifdef  CONFIG_LINKSPEED_AUTODETECT
-	link_speed = get_IEEE_phy_speed(xemacpsp, phy_addr);
-	if (link_speed == 1000) {
-		SetUpSLCRDivisors(xemacpsp->Config.BaseAddress,1000);
-		convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED1000_FD;
-	} else if (link_speed == 100) {
-		SetUpSLCRDivisors(xemacpsp->Config.BaseAddress,100);
-		convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED100_FD;
-	} else if (link_speed != XST_FAILURE){
-		SetUpSLCRDivisors(xemacpsp->Config.BaseAddress,10);
-		convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED10_FD;
-	} else {
-    	xil_printf("Phy setup error — forcing 100 Mbps FD \r\n");
-    	SetUpSLCRDivisors(xemacpsp->Config.BaseAddress, 1000);
-    	convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED100_FD;
-	}
-#elif	defined(CONFIG_LINKSPEED1000)
-	SetUpSLCRDivisors(xemacpsp->Config.BaseAddress,1000);
-	link_speed = 1000;
-	configure_IEEE_phy_speed(xemacpsp, phy_addr, link_speed);
-	convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED1000_FD;
-	sleep(1);
-#elif	defined(CONFIG_LINKSPEED100)
-	SetUpSLCRDivisors(xemacpsp->Config.BaseAddress,100);
-	link_speed = 100;
-	configure_IEEE_phy_speed(xemacpsp, phy_addr, link_speed);
-	convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED100_FD;
-	sleep(1);
-#elif	defined(CONFIG_LINKSPEED10)
-	SetUpSLCRDivisors(xemacpsp->Config.BaseAddress,10);
-	link_speed = 10;
-	configure_IEEE_phy_speed(xemacpsp, phy_addr, link_speed);
-	convspeeddupsetting = XEMACPS_GMII2RGMII_SPEED10_FD;
-	sleep(1);
-#endif
-	if (conv_present) {
-		XEmacPs_PhyWrite(xemacpsp, convphyaddr,
-		XEMACPS_GMII2RGMII_REG_NUM, convspeeddupsetting);
-	}
+    // Reset PHY
+    XEmacPs_PhyWrite(xemacpsp, phy_addr, PHY_REG_CR, PHY_RESET_MASK);
+    usleep(100000); // wait for reset to complete
 
-#ifdef SDT
-	if(xemacpsp->Config.GmiitoRgmiiConvPhyAddr != 0)
-	{
-		XEmacPs_PhyWrite(xemacpsp, xemacpsp->Config.GmiitoRgmiiConvPhyAddr,
-		XEMACPS_GMII2RGMII_REG_NUM, convspeeddupsetting);
-	}
-#endif
+    // Set advertise to 1 Gbps full duplex only
+    XEmacPs_PhyWrite(xemacpsp, phy_addr, PHY_REG_1000_ADVERTISE, ADVERTISE_1000FULL);
 
-	xil_printf("link speed for phy address %d: %d\r\n", phy_addr, link_speed);
-	return link_speed;
+    // Set control register: Restart auto-negotiation, enable auto-negotiation
+    XEmacPs_PhyWrite(xemacpsp, phy_addr, PHY_REG_CR, PHY_CR_RESTART_AN | PHY_CR_AN_ENABLE);
+
+    // Wait for auto-negotiation to complete (optional)
+    // You could add a timeout here
+    u16 status;
+    do {
+        XEmacPs_PhyRead(xemacpsp, phy_addr, PHY_REG_SR, &status);
+    } while (!(status & PHY_SR_AUTONEG_DONE));
+
+    // Set MAC speed to 1 Gbps
+    XEmacPs_SetOperatingSpeed(xemacpsp, 1000);
+
+    return 1000;
 }
+
 
 #if defined CONFIG_LINKSPEED_AUTODETECT
 static u32_t get_TI_phy_speed(XEmacPs *xemacpsp, u32_t phy_addr)
