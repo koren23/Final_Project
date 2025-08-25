@@ -1,7 +1,7 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
-entity Controller is
+entity SPI_rx_tx_Controller is
     generic (
         pha_value : std_logic :='0';
         pol_value : std_logic :='0';
@@ -22,9 +22,9 @@ entity Controller is
         SYSCTRL2    : std_logic_vector(7 downto 0) :="00000000";
         SYSCTRL3    : std_logic_vector(7 downto 0) :="01000000";
         
-        data_count  : integer := 1;
+        data_count  : integer := 0
 
-		byte_data   : std_logic_vector(7 downto 0) := "11111111"
+
     );
     Port (
         clk             : in    std_logic;
@@ -40,25 +40,25 @@ entity Controller is
         tx_ready_in     : in    std_logic;
         dout            : out   std_logic_vector(7 downto 0);
         
-        start_in        : in    std_logic;
-
-		log_data_out	: out	std_logic_vector(7 downto 0)
+        start_in        : in    std_logic
     );
-end Controller;
+end SPI_rx_tx_Controller;
 
-architecture Behavioral of Controller is
+architecture Behavioral of SPI_rx_tx_Controller is
 signal txfctrl_settings      : std_logic_vector(15 downto 0);
+signal TXFCTRL3  : std_logic_vector(7 downto 0);
+signal TXFCTRL4  : std_logic_vector(7 downto 0);
+signal TXBUFFER2 : std_logic_vector(7 downto 0);
+signal TXBUFFER3 : std_logic_vector(7 downto 0);
+signal TXBUFFER4 : std_logic_vector(7 downto 0);
 
 signal start_prev : std_logic :='0';
-signal txactive     : boolean := false;
-signal recv_activated : boolean := false;
+signal active     : boolean :=false;
 
-signal loop_countertx   : integer range 0 to 1024 :=0;
-signal loop_counterrx   : integer range 0 to 1024 :=0;
+signal loop_counter   : integer range 0 to 11 :=0;
 constant array_length : integer := data_count + 10;
-type arraytype is array (0 to data_count + 9) of std_logic_vector(7 downto 0);
-signal tx_array : arraytype := (TXBUFFER1, "00000000", "00000000", byte_data, TXFCTRL1, TXFCTRL2, "00000000", "00000000", SYSCTRL1, SYSCTRL2, SYSCTRL3);
-
+type tx_arrayt is array (0 to data_count - 1) of std_logic_vector(7 downto 0);
+signal tx_array : tx_arrayt := (TXBUFFER1, TXBUFFER2, TXBUFFER3, TXBUFFER4, TXFCTRL1, TXFCTRL2, TXFCTRL3, TXFCTRL4, SYSCTRL1, SYSCTRL2, SYSCTRL3);
 begin
     process(clk)
         begin
@@ -66,47 +66,29 @@ begin
         pol_out <= pol_value;
         
         txfctrl_settings <= TFLEN & TFLE & R & TXBR & TR;
-        tx_array(6) <= txfctrl_settings(7 downto 0);
-        tx_array(7) <= txfctrl_settings(15 downto 8);
-        tx_array(1) <= EXTADDR & TXBUFFERSUB(6 downto 0);
-        tx_array(2) <= TXBUFFERSUB(14 downto 7);
-		
+        TXFCTRL3 <= txfctrl_settings(7 downto 0);
+        TXFCTRL4 <= txfctrl_settings(15 downto 8);
+        TXBUFFER3 <= EXTADDR & TXBUFFERSUB(6 downto 0);
+        TXBUFFER4 <= TXBUFFERSUB(14 downto 7);
+        
         if rising_edge(clk) then
             if start_in = '1' and start_prev = '0' then
-                txactive <= true;
+                active <= true;
             end if;
-			start_prev <= start_in;
-            if txactive = true then
-                if loop_countertx = 10 + data_count then
-                    loop_countertx <= 0;
-					txactive <= false;
-					recv_activated <= true;
+            if active = true then
+                if loop_counter = 11 then
+                    loop_counter <= 0;
+                    
+                    active <= false;
                 else
-                    dout <= tx_array(loop_countertx);
+                    dout <= tx_array(loop_counter);
                     tx_valid_out <= '1';
                     if tx_ready_in = '1' then
-						tx_valid_out <= '0';
-                        loop_countertx <= loop_countertx + 1;
+                        loop_counter <= loop_counter;
                     end if;
-				end if;
-			end if;
-			
-
-			if recv_activated then
-				if loop_counterrx = 10 + data_count + 1 then
-					loop_counterrx <= 0;
-					recv_activated <= false;
-				elsif loop_counterrx = 0 then
-					rx_valid_out <= '1';
-				else
-					log_data_out <= din;
-					if rx_ready_in = '1' then
-						rx_valid_out <= '0';
-						loop_counterrx <= loop_counterrx + 1;
-					end if;
-				end if;
-			end if;
-			
+                    
+                end if;
+            end if;
         end if;
     end process; 
 end Behavioral;
