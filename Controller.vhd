@@ -1,7 +1,7 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 
-entity SPI_rx_tx_Controller is
+entity Controller is
     generic (
         pha_value : std_logic :='0';
         pol_value : std_logic :='0';
@@ -44,9 +44,9 @@ entity SPI_rx_tx_Controller is
 
 		log_data_out	: out	std_logic_vector(7 downto 0)
     );
-end SPI_rx_tx_Controller;
+end Controller;
 
-architecture Behavioral of SPI_rx_tx_Controller is
+architecture Behavioral of Controller is
 signal txfctrl_settings      : std_logic_vector(15 downto 0);
 
 signal start_prev : std_logic :='0';
