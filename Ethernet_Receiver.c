@@ -55,24 +55,23 @@ void udp_receiver_init(){
     xil_printf("UDP receiver initialized on port %d\n", LISTEN_PORT);
 }
 
-
-int main() {
+void general_initialization() {
     ip_addr_t ipaddr, netmask, gw; // declaration of 3 variables ... ip_addr_t is a struct from lwIP
     xil_printf("Starting lwIP UDP Receiver Example\n");
 
-    IP4_ADDR(&ipaddr, 192, 168, 0, 27); // board IP address
-    IP4_ADDR(&netmask, 255, 255, 255, 0); // subnet mask
-    IP4_ADDR(&gw, 0, 0, 0, 0); // gateway address
+    IP4_ADDR(&ipaddr, 192, 168, 0, 27);    // board IP address
+    IP4_ADDR(&netmask, 255, 255, 255, 0);  // subnet mask
+    IP4_ADDR(&gw, 0, 0, 0, 0);             // gateway address
 
-    lwip_init(); // lwIP function that resets everything there
+    lwip_init(); // lwIP function that restarts everything there
 
-    struct netif *netif = &server_netif; // declaration of netif, a pointer to server_netif
+    struct netif *netif = &server_netif; // pointer to the global server_netif
 
 //  function the restarts the ethernet interface
 //  using the pointer it transfers that data into server_netif
-    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_address, 0xe000b000)) { 
+    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_address, 0xe000b000)) {
         xil_printf("Error adding network interface\n");
-        return -1;
+        return;
     }
 
     netif_set_default(netif); // sets netif as the default network interface
@@ -80,11 +79,16 @@ int main() {
 
     xil_printf("Link is %s\n", netif_is_link_up(netif) ? "up" : "down");
     print_ip("Board IP", &ipaddr);
+}
 
+
+int main() {
+    general_initialization();
+    
     udp_receiver_init();
 
     while (1) {
-        xemacif_input(netif);
+        xemacif_input(&server_netif);
     }
     return 0;
 }
