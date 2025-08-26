@@ -5,7 +5,7 @@ entity SPI_rx_tx_Controller is
     generic (
         pha_value : std_logic :='0';
         pol_value : std_logic :='0';
-        TFLEN       : std_logic_vector(6 downto 0) :="000011"; -- number of bytes plus 2
+        TFLEN       : std_logic_vector(7 downto 0) :="00000011"; -- number of bytes plus 2
         data_count  : integer := 1
 
     );
@@ -23,7 +23,7 @@ entity SPI_rx_tx_Controller is
         rx_valid_out    : out    std_logic;
         -- rx data isnt defined yet might go thru here might go straight to nextion / maybe log idk
         
-        start_in        : in    std_logic; 
+        start_in        : in    std_logic;
         dineth          : in    std_logic_vector(7 downto 0)
     );
 end SPI_rx_tx_Controller;
