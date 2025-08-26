@@ -5,90 +5,72 @@ entity SPI_rx_tx_Controller is
     generic (
         pha_value : std_logic :='0';
         pol_value : std_logic :='0';
-        
-        TXFCTRL1    : std_logic_vector(7 downto 0) :="11001000"; -- write + subindex + register ID
-        TXFCTRL2    : std_logic_vector(7 downto 0) :="00000000";
         TFLEN       : std_logic_vector(6 downto 0) :="000011"; -- number of bytes plus 2
-        TFLE        : std_logic_vector(2 downto 0) :="000"; -- extra 3 bits for TFLEN (unused unless databyteamount > 125)
-        R           : std_logic_vector(2 downto 0) :="000"; -- reserved
-        TXBR        : std_logic_vector(1 downto 0) :="10"; -- bitrate 00 110kbps 01 850kbps or 10 6.8mbps
-        TR          : std_logic                    :='0'; -- ranging
-        
-        TXBUFFER1   : std_logic_vector(7 downto 0) :="11001001";
-        TXBUFFERSUB : std_logic_vector(14 downto 0) :="000000000000000";
-        EXTADDR     : std_logic                    :='1';
-        
-        SYSCTRL1    : std_logic_vector(7 downto 0) :="11011000";
-        SYSCTRL2    : std_logic_vector(7 downto 0) :="00000000";
-        SYSCTRL3    : std_logic_vector(7 downto 0) :="01000000";
-        
-        data_count  : integer := 0
-
+        data_count  : integer := 1
 
     );
     Port (
         clk             : in    std_logic;
-        cs_out          : out   std_logic;
+        cs_out          : out   std_logic; -- 0 means start exchange
         pha_out         : out   std_logic;
         pol_out         : out   std_logic;
         
-        rx_valid_out    : out   std_logic;
-        rx_ready_in     : in    std_logic;
-        din             : in    std_logic_vector(7 downto 0);
-        
         tx_valid_out    : out   std_logic;
         tx_ready_in     : in    std_logic;
-        dout            : out   std_logic_vector(7 downto 0);
+        dout            : out   std_logic_vector(7 downto 0); -- data to transmit
         
-        start_in        : in    std_logic
+        rx_ready_in     : in    std_logic;
+        rx_valid_out    : out    std_logic;
+        -- rx data isnt defined yet might go thru here might go straight to nextion / maybe log idk
+        
+        start_in        : in    std_logic; 
+        dineth          : in    std_logic_vector(7 downto 0)
     );
 end SPI_rx_tx_Controller;
 
 architecture Behavioral of SPI_rx_tx_Controller is
-signal txfctrl_settings      : std_logic_vector(15 downto 0);
-signal TXFCTRL3  : std_logic_vector(7 downto 0);
-signal TXFCTRL4  : std_logic_vector(7 downto 0);
-signal TXBUFFER2 : std_logic_vector(7 downto 0);
-signal TXBUFFER3 : std_logic_vector(7 downto 0);
-signal TXBUFFER4 : std_logic_vector(7 downto 0);
 
-signal start_prev : std_logic :='0';
-signal active     : boolean :=false;
-
-signal loop_counter   : integer range 0 to 11 :=0;
-constant array_length : integer := data_count + 10;
-type tx_arrayt is array (0 to data_count - 1) of std_logic_vector(7 downto 0);
-signal tx_array : tx_arrayt := (TXBUFFER1, TXBUFFER2, TXBUFFER3, TXBUFFER4, TXFCTRL1, TXFCTRL2, TXFCTRL3, TXFCTRL4, SYSCTRL1, SYSCTRL2, SYSCTRL3);
+signal start_prev     : std_logic :='0'; -- used for rising edge of start_in
+signal active         : boolean :=false;
+constant array_length : integer := data_count + 11; 
+signal loop_counter   : integer range 0 to array_length + 1 :=0; -- used for trasmittion 
+type tx_arrayt is array (0 to array_length) of std_logic_vector(7 downto 0); -- array of all the register data need to send 
+signal tx_array : tx_arrayt := ("11001001", "00000000", "00000000", "10001000", TFLEN , "00000000", "00000000", "00000000", "10001101", "00000010", "00000000",  "00000000", "00000000");
 begin
     process(clk)
         begin
         pha_out <= pha_value;
-        pol_out <= pol_value;
-        
-        txfctrl_settings <= TFLEN & TFLE & R & TXBR & TR;
-        TXFCTRL3 <= txfctrl_settings(7 downto 0);
-        TXFCTRL4 <= txfctrl_settings(15 downto 8);
-        TXBUFFER3 <= EXTADDR & TXBUFFERSUB(6 downto 0);
-        TXBUFFER4 <= TXBUFFERSUB(14 downto 7);
-        
+        pol_out <= pol_value; -- based on generic vals
+        dout <= (others => '0'); -- reset for dout
         if rising_edge(clk) then
-            if start_in = '1' and start_prev = '0' then
+            if start_in = '1' and start_prev = '0' then -- if rising edge of start_in
                 active <= true;
+                tx_array(2) <= dineth; -- insert data into array
+                cs_out <= '0'; -- start exchange
             end if;
+            start_prev <= start_in; -- update prev
+            
             if active = true then
-                if loop_counter = 11 then
+                if loop_counter = data_count + 1 then
                     loop_counter <= 0;
-                    
+                    tx_valid_out <= '0';
                     active <= false;
+                    rx_valid_out <= '1';
                 else
                     dout <= tx_array(loop_counter);
                     tx_valid_out <= '1';
                     if tx_ready_in = '1' then
-                        loop_counter <= loop_counter;
+                        loop_counter <= loop_counter + 1;
                     end if;
-                    
                 end if;
             end if;
+            
+            if rx_ready_in = '1' then
+                cs_out <= '1';
+                tx_valid_out <= '0';
+                rx_valid_out <= '0';
+            end if;
+            
         end if;
     end process; 
 end Behavioral;
