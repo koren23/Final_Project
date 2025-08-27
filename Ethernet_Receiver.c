@@ -5,8 +5,13 @@
 #include "lwip/ip_addr.h" // IP address structure and helpers
 #include "lwip/pbuf.h" // packet buffer structure
 #include "netif/xadapter.h" // ethernet adapter ethernet for lwIP
+#include "xgpio.h"
+#include "sleep.h"
 
 #define LISTEN_PORT 12345 // port chosen 
+
+XGpio gpio;
+
 
 struct udp_pcb *receiver_pcb; // pointer to UDP control block used to manage and receive packets
 
@@ -17,6 +22,23 @@ u8_t mac_address[6] = {0x00, 0x18, 0x3E, 0x04, 0x81, 0xD6}; // artyz7-10 mac add
 void print_ip(const char *msg, ip_addr_t *ip) {
     xil_printf("%s: %d.%d.%d.%d\n", msg, ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
 }
+
+void pl_transmitter(char msg[256]) {
+    for (int i = 0; msg[i] != '\0'; i++) {
+        u32 value = (u32)msg[i]; 
+
+        XGpio_DiscreteWrite(&gpio, 1, value);
+        XGpio_DiscreteWrite(&gpio, 2, 1);
+        usleep(10);   
+        XGpio_DiscreteWrite(&gpio, 2, 0);
+        usleep(10);
+
+        xil_printf("Sent char '%c' (ASCII: %d)\n", msg[i], value);
+    }
+
+    xil_printf("data uploaded to pl: %s\n", msg);
+}
+
 
 void udp_receive_callback(void *arg, // a value i can set so itll send it back when called - not used
                           struct udp_pcb *pcb, // contains the lwip state for this udp - isnt used cos not replying
@@ -33,7 +55,7 @@ void udp_receive_callback(void *arg, // a value i can set so itll send it back w
         memcpy(msg, p->payload, len); // copies len bytes from pbuff to msg
         msg[len] = '\0'; // sets a null terminator
         xil_printf("Received from %d.%d.%d.%d:%d -> %s\n", ip4_addr1(addr), ip4_addr2(addr), ip4_addr3(addr), ip4_addr4(addr), port, msg);
-
+        pl_transmitter(msg);
         pbuf_free(p); // frees the pbuffer
     }
 }
@@ -79,6 +101,11 @@ void general_initialization() {
 
     xil_printf("Link is %s\n", netif_is_link_up(netif) ? "up" : "down");
     print_ip("Board IP", &ipaddr);
+
+    XGpio_Initialize(&gpio, XPAR_XGPIO_0_BASEADDR);
+    XGpio_SetDataDirection(&gpio, 1, 0x00);
+    XGpio_SetDataDirection(&gpio, 2, 0x00);
+    xil_printf("GPIOs initialized\n");
 }
 
 
