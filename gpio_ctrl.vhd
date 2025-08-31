@@ -15,11 +15,11 @@ begin
     process(clk)
     begin
         if rising_edge(clk) then
-            if ready_in = '1' and ready_prev = '0' then
-                data_out <= data_in;
-                valid_out <= '1';
+            if ready_in = '1' and ready_prev = '0' then -- reads the rising edge of ready_in
+                data_out <= data_in; -- send data
+                valid_out <= '1'; -- handshake
             else
-                valid_out <= '0';
+                valid_out <= '0'; -- produces a 1 clock length pulse
             end if;
             ready_prev <= ready_in;
 
