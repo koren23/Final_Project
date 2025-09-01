@@ -12,11 +12,11 @@ entity SPI_Receiver is
 end SPI_Receiver;
 
 architecture Behavioral of SPI_Receiver is
-    signal recv_counter       : integer range 0 to 9              :=0;
+    signal recv_counter       : integer range 0 to 8              :=0;
     signal data_buffer        : std_logic_vector(7 downto 0)      := (others => '0'); -- buffer for receiving data
     signal active             : boolean                           := false; -- true when receiving data
     signal ready_prev         : std_logic                         := '0'; -- previous state of ready can be removed later
-    signal clock_counter      : integer range 0 to 5              := 0; -- dividing 100MHZ to 20MHZ
+    signal clock_counter      : integer range 0 to 4              := 0; -- dividing 100MHZ to 20MHZ
 begin
     process(clk)
         begin
@@ -29,20 +29,20 @@ begin
             ready_prev <= ready_in; -- save prev value
             
  --    clock divider 100MHZ to 20MHZ           
-            if clock_counter = 5 then
+            if clock_counter = 4 then
                 clock_counter <= 0;
                 
                 if active = true then         
-                  
---          byte recv counter logic
-                    if recv_counter >= 8 then
-                        active <= false;
-                        recv_counter <= 0;
-                        valid_out <= '1';
-                        dout <= data_buffer;
-                    else
+ --          byte recv counter logic
+                    if recv_counter < 7 then
                         data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
                         recv_counter <= recv_counter + 1;
+                    else
+                        data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
+                        recv_counter <= 0;
+                        active <= false;
+                        valid_out <= '1';
+                        dout <= data_buffer;
                     end if;
                 end if;
 
