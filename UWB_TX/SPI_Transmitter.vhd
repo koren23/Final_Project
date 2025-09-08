@@ -18,8 +18,20 @@
         signal bit_counter        : integer range 0 to 7              :=0; -- counter inside byte
         signal byte_counter       : integer range 0 to 13             :=0; -- counter between bytes
         type tx_arrayt is array (0 to 12) of std_logic_vector(7 downto 0); -- array of all the register data need to send 
-        signal tx_array : tx_arrayt  := ("11001001", "00000000", "00000000", "10001000","00000011", -- last one here is TFLEN aka length + 2 
-        "00000000", "00000000", "00000000", "10001101", "00000010", "00000000",  "00000000", "00000000");
+        signal tx_array : tx_arrayt  := ( -- 7 being msb 
+        "11001001", --  7 write 6 sub address included 5-0 address of TX_BUFFER register
+        "00000000", -- start at the beginning of the buffer
+        "00000000", -- data     edited in process
+        "10001000", -- 7 write 6 no sub 5-0 TX_FCTRL register address
+        "00000011", -- TFLEN aka length + 2 
+        "00000000", -- defaul tx
+        "00000010", -- 2 64MHZ cos default 4MHZ isnt supported 
+        "00000000", -- no exteded frame mode
+        "10001101", -- 7 write 6 no sub 5-0 SYS_CTRL register address
+        "00000010", -- 1 means TXSTRT
+        "00000000", -- reserved
+        "00000000", -- reserved
+        "00000000");-- reserved
     
     begin
         process(clk)
@@ -66,4 +78,3 @@
             end if;
         end process;
     end Behavioral;
-
