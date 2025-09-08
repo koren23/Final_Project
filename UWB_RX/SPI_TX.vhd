@@ -11,7 +11,9 @@
             mosi_out           : out std_logic; -- byte to send
             ready_in           : in  std_logic; -- handshake with rx 
             valid_out          : out std_logic;
-            rx_data            : in std_logic_vector(7 downto 0)
+            rx_data            : in std_logic_vector(7 downto 0);
+            rx_data_count      : out std_logic_vector(7 downto 0);
+            rx_current_count   : in std_logic_vector(7 downto 0)
         );
     end SPI_Transmitter;
     
@@ -38,15 +40,16 @@
                 "00000000" -- 
         );
         signal clear_commands : array6bytes      := (
-                "", -- 
-                "", -- 
-                "", -- 
-                "", -- 
-                "", -- 
-                ""  -- 
+                "10001111", -- 
+                "10000000", -- 
+                "00000000", -- 
+                "00000000", -- 
+                "00000000", -- 
+                "00000000"  -- 
         );
         signal readstatus : std_logic_vector(7 downto 0) := "00001111";
         signal readlen : std_logic_vector(7 downto 0) := "00010000";
+        signal readdatacommand : std_logic_vector(7 downto 0) := "00010001";
         
     begin
         process(clk)
@@ -87,16 +90,18 @@
                                 if receiver_counter = 4 then
                                     valid_out <= '0';
                                     active <= false;
+                                    receiver_counter <= 0;
                                     if movestateflag then
                                         currentstate <= readlength;
                                         movestateflag <= false;
-                                    else
-                                        
                                     end if;
                                 elsif receiver_counter = 2 then
                                     if rx_data(6) = '1' then
                                         movestateflag <= true;
                                     end if;
+                                    receiver_counter <= 3;
+                                else
+                                    receiver_counter <= receiver_counter + 1;
                                 end if;
                             else
                                 if bit_counter = 0 then
@@ -120,11 +125,11 @@
                             end if;
                             
                             if active then
-                                if receiver_counter = 3 then
+                                if to_integer(unsigned(rx_current_count)) = 3 then
                                     valid_out <= '0';
                                     active <= false;
                                     currentstate <= readdata;
-                                elsif receiver_counter = 0 then
+                                elsif to_integer(unsigned(rx_current_count)) = 0 then
                                     frame_length <= to_integer(unsigned(rx_data(6 downto 0)));
                                 end if;
                             else
@@ -138,6 +143,7 @@
                                     mosi_out <= readlen(7 - bit_counter);
                                     bit_counter <= 0;
                                     valid_out <= '1';
+                                    rx_data_count <= "00000100";
                                 end if;
                             end if;
                         
@@ -153,17 +159,17 @@
                                     active <= false;
                                         currentstate <= clear;
                                 elsif receiver_counter < frame_length - 3 then
-                                    data_array() <= rx_data;
+                                    data_array(to_integer(unsigned(rx_current_count))) <= rx_data;
                                 end if;
                             else
                                 if bit_counter = 0 then
-                                    mosi_out <= readlen(7);
+                                    mosi_out <= readdatacommand(7);
                                     bit_counter <= 1;
                                 elsif bit_counter < 7 then
-                                    mosi_out <= readlen(7 - bit_counter);
+                                    mosi_out <= readdatacommand(7 - bit_counter);
                                     bit_counter <= bit_counter + 1;
                                 else
-                                    mosi_out <= readlen(7 - bit_counter);
+                                    mosi_out <= readdatacommand(7 - bit_counter);
                                     bit_counter <= 0;
                                     valid_out <= '1';
                                 end if;
