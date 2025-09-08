@@ -9,7 +9,7 @@ entity SPI_Receiver is
         valid_out          : out std_logic;
         dout               : out std_logic_vector(7 downto 0); -- data sent byte by byte
         amount_bytes_expected : std_logic_vector(7 downto 0); -- number of expected data bytes
-        current byte       : std_logic_vector(7 downto 0) -- number of byte im on using a counter
+        current_byte       : std_logic_vector(7 downto 0) -- number of byte im on using a counter
     );
 end SPI_Receiver;
 
