@@ -5,7 +5,7 @@
         port(
             clk                : in  std_logic; -- 100MHZ
             mosi_out           : out std_logic; -- byte to send
-            ready_in           : in  std_logic;  -- handshake with CTRL
+            ready_in           : in  std_logic;  -- handshake
             valid_out          : out std_logic;
             din                : in  std_logic_vector(7 downto 0) -- data
         );
