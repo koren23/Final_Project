@@ -1,15 +1,16 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
 
 entity SPI_Receiver is
     port(
-        clk                : in  std_logic; -- 100MHZ
-        miso_in            : in std_logic; -- feedback from dw1000
-        ready_in           : in  std_logic; 
-        valid_out          : out std_logic;
-        dout               : out std_logic_vector(7 downto 0); -- data sent byte by byte
-        amount_bytes_expected : std_logic_vector(7 downto 0); -- number of expected data bytes
-        current_byte       : std_logic_vector(7 downto 0) -- number of byte im on using a counter
+        clk                     : in    std_logic; -- 100MHZ
+        miso_in                 : in    std_logic; -- feedback from dw1000
+        ready_in                : in    std_logic; 
+        valid_out               : out   std_logic;
+        dout                    : out   std_logic_vector(7 downto 0); -- data sent byte by byte
+        amount_bytes_expected   : in    std_logic_vector(7 downto 0); -- number of expected data bytes
+        current_byte            : out   std_logic_vector(7 downto 0) -- number of byte im on using a counter
     );
 end SPI_Receiver;
 
@@ -19,6 +20,7 @@ architecture Behavioral of SPI_Receiver is
     signal active             : boolean                           := false; -- true when receiving data
     signal ready_prev         : std_logic                         := '0'; -- previous state of ready can be removed later
     signal clock_counter      : integer range 0 to 4              := 0; -- dividing 100MHZ to 20MHZ
+    signal bytecounter        : integer range 0 to to_integer(unsigned(amount_bytes_expected)) := 0;
 begin
     process(clk)
         begin
@@ -36,15 +38,21 @@ begin
                 
                 if active = true then         
  --          byte recv counter logic
-                    if recv_counter < 7 then
-                        data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
-                        recv_counter <= recv_counter + 1;
-                    else
-                        data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
-                        recv_counter <= 0;
+                    if bytecounter = to_integer(unsigned(amount_bytes_expected)) then
+                        bytecounter <= 0;
                         active <= false;
-                        valid_out <= '1';
-                        dout <= data_buffer;
+                    else
+                        if recv_counter < 7 then
+                            data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
+                            recv_counter <= recv_counter + 1;
+                        else
+                            data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
+                            recv_counter <= 0;
+                            valid_out <= '1';
+                            dout <= data_buffer;
+                            bytecounter <= bytecounter + 1;
+                        end if;
+                        
                     end if;
                 end if;
 
