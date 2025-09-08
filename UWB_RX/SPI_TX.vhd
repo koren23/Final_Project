@@ -24,9 +24,8 @@
         signal bit_counter        : integer range 0 to 7              :=0; -- counter inside byte
         signal byte_counter       : integer range 0 to 6              :=0; -- counter between bytes
         signal ready_prev         : std_logic                         := '0';
-        signal receiver_counter   : integer range 0 to 4              :=0; -- how many times receiver works in a row
         signal active             : boolean                           :=false; -- used to save rising edge value
-        signal movestateflag      : boolean                           :=false;
+        signal movestateflag      : boolean                           :=false; -- to only move state when finished receiving data
         signal frame_length       : integer range 0 to 128            :=0;
         type variablesizedarray is array (0 to data_length) of std_logic_vector(7 downto 0);
         signal data_array : variablesizedarray;
@@ -87,21 +86,17 @@
                             end if;
                             
                             if active then
-                                if receiver_counter = 4 then
+                                if to_integer(unsigned(rx_current_count)) = 4 then
                                     valid_out <= '0';
                                     active <= false;
-                                    receiver_counter <= 0;
                                     if movestateflag then
                                         currentstate <= readlength;
                                         movestateflag <= false;
                                     end if;
-                                elsif receiver_counter = 2 then
+                                elsif to_integer(unsigned(rx_current_count)) = 2 then
                                     if rx_data(6) = '1' then
                                         movestateflag <= true;
                                     end if;
-                                    receiver_counter <= 3;
-                                else
-                                    receiver_counter <= receiver_counter + 1;
                                 end if;
                             else
                                 if bit_counter = 0 then
@@ -114,6 +109,7 @@
                                     mosi_out <= readstatus(7 - bit_counter);
                                     bit_counter <= 0;
                                     valid_out <= '1';
+                                    rx_data_count <= "00000101";
                                 end if;
                             end if;
                             
