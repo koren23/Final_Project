@@ -23,7 +23,7 @@
         signal byte_counter       : integer range 0 to 6              :=0; -- counter between bytes
         signal ready_prev         : std_logic                         := '0';
         signal receiver_counter   : integer range 0 to 4              :=0; -- how many times receiver works in a row
-        signal active             : boolean                           :=false; -- used to save rising edge value        signal active             : boolean                           :=false; -- used to save rising edge value
+        signal active             : boolean                           :=false; -- used to save rising edge value
         signal movestateflag      : boolean                           :=false;
         signal frame_length       : integer range 0 to 128            :=0;
         type variablesizedarray is array (0 to data_length) of std_logic_vector(7 downto 0);
