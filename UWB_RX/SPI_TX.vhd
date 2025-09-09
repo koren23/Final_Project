@@ -155,7 +155,7 @@
                                     valid_out <= '0';
                                     active <= false;
                                         currentstate <= clear;
-                                elsif receiver_counter < frame_length - 3 then
+                                elsif to_integer(unsigned(rx_current_count)) < frame_length - 3 then
                                     data_array(to_integer(unsigned(rx_current_count))) <= rx_data;
                                 end if;
                             else
@@ -169,7 +169,7 @@
                                     mosi_out <= readdatacommand(7 - bit_counter);
                                     bit_counter <= 0;
                                     valid_out <= '1';
-									rx_data_count <= std_logic_vector(to_unsigned(frame_length, 8))(7 downto 0);
+									rx_data_count <= std_logic_vector(to_unsigned(frame_length, 8));
                                 end if;
                             end if;
                     
