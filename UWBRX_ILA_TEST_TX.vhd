@@ -67,7 +67,7 @@
                      case currentstate is
 						when startbutton => -- on button rising edge go to config
 							if button = '1' and button_prev = '0' then
-								currentstate => config;
+								currentstate <= config;
 							end if;
 							button_prev <= button; -- update signal
 							
