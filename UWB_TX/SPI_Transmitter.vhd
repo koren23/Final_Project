@@ -18,7 +18,7 @@
         signal clock_counter      : integer range 0 to 4              := 0; -- dividing 100MHZ to 20MHZ
         signal bit_counter        : integer range 0 to 7              :=0; -- counter inside byte
         signal byte_counter       : integer range 0 to 13             :=0; -- counter between bytes
-        type tx_arrayt is array (0 to 12) of std_logic_vector(7 downto 0); -- array of all the register data need to send 
+        type tx_arrayt is array (0 to 14) of std_logic_vector(7 downto 0); -- array of all the register data need to send 
         signal tx_array : tx_arrayt  := ( -- 7 being msb 
         "11001001", --  7 write 6 sub address included 5-0 address of TX_BUFFER register
         "00000000", -- start at the beginning of the buffer
