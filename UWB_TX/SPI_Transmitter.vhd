@@ -8,7 +8,7 @@
             ready_in           : in  std_logic;  -- handshake
             valid_out          : out std_logic;
             din                : in  std_logic_vector(7 downto 0); -- data
-            cs                 : out std_logic
+            cs1                : out std_logic
         );
     end SPI_Transmitter;
     
@@ -55,7 +55,7 @@
                 if clock_counter = 4 then
                     clock_counter <= 0;
                     if active then
-                        cs <= '0';
+                        cs1 <= '0';
                         if bit_counter = 0 then
                             mosi_out <= tx_array(byte_counter)(7);
                             bit_counter <= 1;
@@ -74,7 +74,7 @@
                         end if;               
                     end if;
                  else
-                    cs <= '1';
+                    cs1 <= '1';
                     valid_out <= '0';
                     clock_counter <= clock_counter + 1;
                 end if;
