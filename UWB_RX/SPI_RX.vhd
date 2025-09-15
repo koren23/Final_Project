@@ -20,7 +20,7 @@ architecture Behavioral of SPI_Receiver is
     signal active             : boolean                           := false; -- true when receiving data
     signal ready_prev         : std_logic                         := '0'; -- previous state of ready can be removed later
     signal clock_counter      : integer range 0 to 4              := 0; -- dividing 100MHZ to 20MHZ
-    signal bytecounter        : integer range 0 to to_integer(unsigned(amount_bytes_expected)) := 0;
+    signal bytecounter        : integer range 0 to 255            := 0;
 begin
     process(clk)
         begin
