@@ -7,7 +7,8 @@ entity SPI_Receiver is
         miso_in            : in std_logic; -- feedback from dw1000
         ready_in           : in  std_logic; 
         valid_out          : out std_logic;
-        dout               : out std_logic_vector(7 downto 0)
+        dout               : out std_logic_vector(7 downto 0);
+        cs2                 : out std_logic
     );
 end SPI_Receiver;
 
@@ -34,6 +35,7 @@ begin
                 
                 if active = true then         
  --          byte recv counter logic
+                    cs <= '0';
                     if recv_counter < 7 then
                         data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
                         recv_counter <= recv_counter + 1;
@@ -44,6 +46,8 @@ begin
                         valid_out <= '1';
                         dout <= data_buffer;
                     end if;
+                else
+                    cs <= '1';
                 end if;
 
             else
