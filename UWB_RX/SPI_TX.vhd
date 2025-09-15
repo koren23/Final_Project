@@ -14,12 +14,11 @@
             rx_data            : in 	std_logic_vector(7 downto 0);
             rx_data_count      : out 	std_logic_vector(7 downto 0);
             rx_current_count   : in 	std_logic_vector(7 downto 0);
-			stateila		   : out 	std_logic_vector(5 downto 0);
 			button	   		   : in		std_logic
         );
     end SPI_Transmitter;
     
-    architecture Behavioral of SPI_Transmitter is
+     architecture Behavioral of SPI_Transmitter is
 				type states is (startbutton,config, waitstatus, readlength, readdata, clear);
         signal currentstate       : states                            :=	startbutton;
         signal clock_counter      : integer range 0 to 4              :=	0; -- dividing 100MHZ to 20MHZ
@@ -29,36 +28,41 @@
         signal active             : boolean                           :=	false; -- used to save rising edge value
         signal movestateflag      : boolean                           :=	false; -- to only move state when finished receiving data
         signal frame_length       : integer range 0 to 128            :=	0;
+        signal button_prev		  : std_logic						  :=	'0';
+        signal reversed_data      : std_logic_vector(7 downto 0);
+        
+        	type variablesizedarray is array (0 to data_length) of std_logic_vector(7 downto 0);
+		signal data_array : variablesizedarray;
+		
+        	type array6bytes is array (0 to 5) of std_logic_vector(7 downto 0);
+        signal config_commands : array6bytes    := (
+                "10001101", -- write operation (SYS_CTRL)
+                "00000000", -- Sub-address
+                "00000000", -- 
+                "00000000", -- 
+                "00000001", -- RXENAB bit
+                "00000000" -- 
+        );
+        
 		signal readstatus 		  : std_logic_vector(7 downto 0) 	  :=	"00001111";
         signal readlen			  : std_logic_vector(7 downto 0) 	  :=	"00010000";
         signal readdatacommand	  : std_logic_vector(7 downto 0)	  :=	"00010001";
-		signal button_prev		  : std_logic						  :=	'0';
-			type variablesizedarray is array (0 to data_length) of std_logic_vector(7 downto 0);
-		signal data_array : variablesizedarray;
-			type array5bytes is array (0 to 4) of std_logic_vector(7 downto 0);
-        signal config_commands : array5bytes    := (
-                "10001101", -- 
-                "00000001", -- 
-                "00000000", -- 
-                "00000000", -- 
-                "00000000" -- 
-        );
-			type array6bytes is array (0 to 5) of std_logic_vector(7 downto 0);
+		
         signal clear_commands : array6bytes      := (
-                "10001111", -- 
-                "10000000", -- 
-                "00000000", -- 
-                "00000000", -- 
-                "00000000", -- 
-                "00000000"  -- 
+                "10001111", --  Write to 0x0F
+                "11111111", -- 
+                "11111111", -- 
+                "11110111", -- 
+                "11111111", -- 
+                "00000111"  -- 
         );
+        
         
         
     begin
         process(clk)
         begin
             if rising_edge(clk) then
-				stateila <= "000000";
  --    clock divider 100MHZ to 20MHZ          
                 if clock_counter = 4 then -- work 1/5 of the 100mhz clock supplied = 20mhz
                     clock_counter <= 0;
@@ -72,22 +76,18 @@
 							button_prev <= button; -- update signal
 							
 							
-                        when config => -- 5 bytes for SYS_CTRL register
+                        when config => -- recv 5 bytes for SYS_CTRL register
                             if bit_counter = 0 then -- loop for 8 bits
-								stateila <= "000001";
                                 mosi_out <= config_commands(byte_counter)(7);
                                 bit_counter <= 1;
                             elsif bit_counter < 7 then
-								stateila <= "000010";
                                 mosi_out <= config_commands(byte_counter)(7 - bit_counter);
                                 bit_counter <= bit_counter + 1;
                             else
-								stateila <= "000011";
                                 mosi_out <= config_commands(byte_counter)(0);
                                 bit_counter <= 0;
                                 byte_counter <= byte_counter + 1;
-                                if byte_counter = 4 then -- loops for 5 bytes
-									stateila <= "000100";
+                                if byte_counter = 6 then -- loops for 6 bytes
                                     byte_counter <= 0;
                                     currentstate <= waitstatus;
                                 end if;
@@ -101,34 +101,26 @@
                             end if;
                             
                             if active then
-								stateila <= "000101";
                                 if to_integer(unsigned(rx_current_count)) = 4 then
-									stateila <= "000110";
                                     valid_out <= '0';
                                     active <= false;
                                     if movestateflag then --if theres data move on
-										stateila <= "000111";
                                         currentstate <= readlength;
                                         movestateflag <= false;
                                     end if;
-                                elsif to_integer(unsigned(rx_current_count)) = 2 then -- check for data status
-									stateila <= "001000";
-                                    if rx_data(6) = '1' then
-									stateila <= "001001";
+                                elsif to_integer(unsigned(rx_current_count)) = 3 then -- check for data status
+                                    if rx_data(1) = '1' then
                                         movestateflag <= true;
                                     end if;
                                 end if;
                             else -- keep sending byte till active
                                 if bit_counter = 0 then
-									stateila <= "001001";
                                     mosi_out <= readstatus(7);
                                     bit_counter <= 1;
                                 elsif bit_counter < 7 then
-									stateila <= "001010";
                                     mosi_out <= readstatus(7 - bit_counter);
                                     bit_counter <= bit_counter + 1;
                                 else
-									stateila <= "001011";
                                     mosi_out <= readstatus(0);
                                     bit_counter <= 0;
                                     valid_out <= '1';
@@ -144,27 +136,25 @@
                             end if;
                             
                             if active then
-								stateila <= "001100";
-                                if to_integer(unsigned(rx_current_count)) = 3 then
-									stateila <= "001101";
+                                for i in 0 to 7 loop
+                                    reversed_data(i) <= rx_data(7 - i);
+                                end loop;
+                                if to_integer(unsigned(rx_current_count)) = 0 then
                                     valid_out <= '0';
                                     active <= false;
                                     currentstate <= readdata;
-                                elsif to_integer(unsigned(rx_current_count)) = 0 then
-									stateila <= "001110";
-                                    frame_length <= to_integer(unsigned(rx_data(6 downto 0)));
+                                elsif to_integer(unsigned(rx_current_count)) = 3 then
+                                    
+                                    frame_length <= to_integer(unsigned(reversed_data(6 downto 0)));
                                 end if;
                             else
                                 if bit_counter = 0 then -- loop till active
-									stateila <= "001111";
                                     mosi_out <= readlen(7);
                                     bit_counter <= 1;
                                 elsif bit_counter < 7 then
-									stateila <= "010000";
                                     mosi_out <= readlen(7 - bit_counter);
                                     bit_counter <= bit_counter + 1;
                                 else
-									stateila <= "010001";
                                     mosi_out <= readlen(7 - bit_counter);
                                     bit_counter <= 0;
                                     valid_out <= '1';
@@ -179,27 +169,24 @@
                             end if;
                             
                             if active then
-								stateila <= "010010";
-                                if to_integer(unsigned(rx_current_count)) = frame_length - 1 then
-									stateila <= "010011";
+                                for i in 0 to 7 loop
+                                    reversed_data(i) <= rx_data(7 - i);
+                                end loop;
+                                if to_integer(unsigned(rx_current_count)) = frame_length then
                                     valid_out <= '0';
                                     active <= false;
-                                        currentstate <= clear;
-                                elsif to_integer(unsigned(rx_current_count)) < frame_length - 3 then
-									stateila <= "010100";
-                                    data_array(to_integer(unsigned(rx_current_count))) <= rx_data;
+                                    currentstate <= clear;
+                                elsif to_integer(unsigned(rx_current_count)) < frame_length - 2 then
+                                    data_array(to_integer(unsigned(rx_current_count))) <= reversed_data;
                                 end if;
                             else
                                 if bit_counter = 0 then
-									stateila <= "010101";
                                     mosi_out <= readdatacommand(7);
                                     bit_counter <= 1;
                                 elsif bit_counter < 7 then
-									stateila <= "010110";
                                     mosi_out <= readdatacommand(7 - bit_counter);
                                     bit_counter <= bit_counter + 1;
                                 else
-									stateila <= "010111";
                                     mosi_out <= readdatacommand(7 - bit_counter);
                                     bit_counter <= 0;
                                     valid_out <= '1';
@@ -210,20 +197,16 @@
                     
                         when clear => -- 6 bytes to SYS_STATUS register
 							if bit_counter = 0 then
-								stateila <= "011000";
                                 mosi_out <= clear_commands(byte_counter)(7);
                                 bit_counter <= 1;
                             elsif bit_counter < 7 then
-								stateila <= "011001";
                                 mosi_out <= clear_commands(byte_counter)(7 - bit_counter);
                                 bit_counter <= bit_counter + 1;
                             else
-								stateila <= "011010";
                                 mosi_out <= clear_commands(byte_counter)(7 - bit_counter);
                                 bit_counter <= 0;
                                 byte_counter <= byte_counter + 1;
-                                if byte_counter = 4 then
-									stateila <= "011011";
+                                if byte_counter = 6 then
                                     byte_counter <= 0;
                                     currentstate <= waitstatus;
                                 end if;
