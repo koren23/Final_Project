@@ -7,7 +7,8 @@
             mosi_out           : out std_logic; -- byte to send
             ready_in           : in  std_logic;  -- handshake
             valid_out          : out std_logic;
-            din                : in  std_logic_vector(7 downto 0) -- data
+            din                : in  std_logic_vector(7 downto 0); -- data
+            cs                 : out std_logic
         );
     end SPI_Transmitter;
     
@@ -22,13 +23,17 @@
         "11001001", --  7 write 6 sub address included 5-0 address of TX_BUFFER register
         "00000000", -- start at the beginning of the buffer
         "00000000", -- data     edited in process
-        "10001000", -- 7 write 6 no sub 5-0 TX_FCTRL register address
-        "00000011", -- TFLEN aka length + 2 
-        "00000000", -- defaul tx
-        "00000010", -- 2 64MHZ cos default 4MHZ isnt supported 
-        "00000000", -- no exteded frame mode
-        "10001101", -- 7 write 6 no sub 5-0 SYS_CTRL register address
-        "00000010", -- 1 means TXSTRT
+            
+        "11001000", -- write, sub-address included, reg = 0x08 (TX_FCTRL)
+        "00000000", -- sub-address = 0
+        "00000011", -- frame length = 3 bytes
+        "00000000", -- default TX settings
+        "00000010", -- enable 64 MHz SPI (required)
+        "00000000", -- no extended frame
+            
+        "11001101", -- Write, sub-address included, reg = 0x0D (SYS_CTRL)
+        "00000000", -- Sub-address = 0
+        "00000010", -- Set TXSTRT bit
         "00000000", -- reserved
         "00000000", -- reserved
         "00000000");-- reserved
@@ -36,7 +41,6 @@
     begin
         process(clk)
             begin
-            
             if rising_edge(clk) then
     --     on ready rising edge active <= true (stays until done transmitting)        
                 if ready_in = '1' and ready_prev = '0' then
@@ -51,6 +55,7 @@
                 if clock_counter = 4 then
                     clock_counter <= 0;
                     if active then
+                        cs <= '0';
                         if bit_counter = 0 then
                             mosi_out <= tx_array(byte_counter)(7);
                             bit_counter <= 1;
@@ -69,6 +74,7 @@
                         end if;               
                     end if;
                  else
+                    cs <= '1';
                     valid_out <= '0';
                     clock_counter <= clock_counter + 1;
                 end if;
