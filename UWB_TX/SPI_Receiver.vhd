@@ -35,7 +35,7 @@ begin
                 
                 if active = true then         
  --          byte recv counter logic
-                    cs <= '0';
+                    cs2 <= '0';
                     if recv_counter < 7 then
                         data_buffer(7 - recv_counter) <= miso_in; -- MSB to LSB
                         recv_counter <= recv_counter + 1;
@@ -47,7 +47,7 @@ begin
                         dout <= data_buffer;
                     end if;
                 else
-                    cs <= '1';
+                    cs2 <= '1';
                 end if;
 
             else
