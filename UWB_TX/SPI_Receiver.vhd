@@ -3,7 +3,6 @@ use IEEE.STD_LOGIC_1164.ALL;
 
 entity receiver is
   Port (
-        clk     :   in  std_logic;
         clkspi  :   in  std_logic;
         miso    :   in  std_logic;
         ready   :   in  std_logic;
@@ -19,34 +18,31 @@ signal bit_cnt      :   integer range 0 to 31   :=0;
     type arrayt is array (0 to 31) of std_logic;
 signal data         :   arrayt                  := (others => '0');
 begin
-    process(clk)
+    process(clkspi)
     begin
-        if rising_edge(clk) then
+        if rising_edge(clkspi) then
             if ready = '1' and ready_prev = '0' then
                 active <= true;
             end if;
             ready_prev <= ready;
             
-            
-            if rising_edge(clkspi) then
-                if active then
-                    if bit_cnt = 31 then
-                        bit_cnt <= 0;
-                        active <= false;
-                        if data(7) = '0' then
-                            valid <= '1';
-                        else
-                            repeat0 <= '1';
-                        end if;
+            if active then
+                if bit_cnt = 31 then
+                    bit_cnt <= 0;
+                    active <= false;
+                    if data(7) = '0' then
+                        valid <= '1';
                     else
-                        data(bit_cnt) <= miso;
-                        bit_cnt <= bit_cnt + 1;
-                        
+                        repeat0 <= '1';
                     end if;
+                else
+                    data(bit_cnt) <= miso;
+                    bit_cnt <= bit_cnt + 1;
+                    
                 end if;
-                valid <= '0';
-                repeat0 <='0';
             end if;
+            valid <= '0';
+            repeat0 <='0';
             
         
         end if;
