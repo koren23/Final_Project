@@ -19,9 +19,9 @@ entity transmitter is
 end transmitter;
 
 architecture Behavioral of transmitter is
-    constant    txfctrl_data        :   std_logic_vector(40 downto 0)    :="1000100000000000000000100100000010011010";
+    constant    txfctrl_data        :   std_logic_vector(39 downto 0)    :="1000100000000000000000100100000010011010";
     constant    tx_buffer_write     :   std_logic_vector(7 downto 0)     :="10001001";
-    constant    sys_ctrl            :   std_logic_vector(40 downto 0)    :="1000110100000000000000000000000000000010";
+    constant    sys_ctrl            :   std_logic_vector(39 downto 0)    :="1000110100000000000000000000000000000010";
     constant    readstatus          :   std_logic_vector(7 downto 0)     :="00001111";
     
     signal clockcounter     :       integer range 0 to 19   :=0; 
