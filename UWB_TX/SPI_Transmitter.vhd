@@ -1,86 +1,170 @@
-    library IEEE;
-    use IEEE.STD_LOGIC_1164.ALL;
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+entity transmitter is
+  Port (
+        clk             :   in      std_logic; -- 100MHZ
+        ready           :   in      std_logic;
+        current_time    :   in      std_logic_vector(31 downto 0);
+        time_impact     :   in      std_logic_vector(31 downto 0);
+        radius          :   in      std_logic_vector(23 downto 0);
+        latitude        :   in      std_logic_vector(31 downto 0);
+        longitude       :   in      std_logic_vector(31 downto 0);
+        valid           :   out     std_logic;
+        mosi            :   out     std_logic;
+        tx_cs           :   out     std_logic; -- byte to send
+        spiclk          :   out     std_logic); -- 2.5MHZ
+end transmitter;
+
+architecture Behavioral of transmitter is
+    constant    txfctrl_data        :   std_logic_vector(40 downto 0)    :="1000100000000000000000100100000010011010";
+    constant    tx_buffer_write     :   std_logic_vector(7 downto 0)     :="10001001";
+    constant    sys_ctrl            :   std_logic_vector(40 downto 0)    :="1000110100000000000000000000000000000010";
     
-    entity SPI_Transmitter is
-        port(
-            clk                : in  std_logic; -- 100MHZ
-            mosi_out           : out std_logic; -- byte to send
-            ready_in           : in  std_logic;  -- handshake
-            valid_out          : out std_logic;
-            din                : in  std_logic_vector(7 downto 0); -- data
-            cs1                : out std_logic
-        );
-    end SPI_Transmitter;
-    
-    architecture Behavioral of SPI_Transmitter is
-        signal active             : boolean                           := false; -- true when sending data
-        signal ready_prev         : std_logic                         := '0'; -- previous state of ready
-        signal clock_counter      : integer range 0 to 4              := 0; -- dividing 100MHZ to 20MHZ
-        signal bit_counter        : integer range 0 to 7              :=0; -- counter inside byte
-        signal byte_counter       : integer range 0 to 13             :=0; -- counter between bytes
-        type tx_arrayt is array (0 to 14) of std_logic_vector(7 downto 0); -- array of all the register data need to send 
-        signal tx_array : tx_arrayt  := ( -- 7 being msb 
-        "11001001", --  7 write 6 sub address included 5-0 address of TX_BUFFER register
-        "00000000", -- start at the beginning of the buffer
-        "00000000", -- data     edited in process
-            
-        "11001000", -- write, sub-address included, reg = 0x08 (TX_FCTRL)
-        "00000000", -- sub-address = 0
-        "00000011", -- frame length = 3 bytes
-        "00000000", -- default TX settings
-        "00000010", -- enable 64 MHz SPI (required)
-        "00000000", -- no extended frame
-            
-        "11001101", -- Write, sub-address included, reg = 0x0D (SYS_CTRL)
-        "00000000", -- Sub-address = 0
-        "00000010", -- Set TXSTRT bit
-        "00000000", -- reserved
-        "00000000", -- reserved
-        "00000000");-- reserved
-    
+    signal clockcounter     :       integer range 0 to 19   :=0; 
+    signal spiclk_toggle    :       std_logic               :='0';
+    signal spiclk_prev      :       std_logic               :='0';
+    signal active           :       boolean                 :=false; -- for states
+    signal bit_cnt          :       integer range 0 to 39   :=0;
+
+        type states is (txfctrl, callbuffer, timeimp, impact, radiu, latit, longit, txstart, receiver);
+    signal state            :       states                  :=callbuffer;
+begin
+    process(clk)
     begin
-        process(clk)
-            begin
-            if rising_edge(clk) then
-    --     on ready rising edge active <= true (stays until done transmitting)        
-                if ready_in = '1' and ready_prev = '0' then
-                    active <= true;
-                    tx_array(2) <= din; -- insert data into array
-                    bit_counter <= 0;
-                    byte_counter <= 0;
-                end if;
-                ready_prev <= ready_in; -- save prev value
-                
-     --    clock divider 100MHZ to 20MHZ          
-                if clock_counter = 4 then
-                    clock_counter <= 0;
-                    if active then
-                        cs1 <= '0';
-                        if bit_counter = 0 then
-                            mosi_out <= tx_array(byte_counter)(7);
-                            bit_counter <= 1;
-                        elsif bit_counter < 7 then
-                            mosi_out <= tx_array(byte_counter)(7 - bit_counter);
-                            bit_counter <= bit_counter + 1;
-                        else
-                            mosi_out <= tx_array(byte_counter)(7 - bit_counter);
-                            bit_counter <= 0;
-                            byte_counter <= byte_counter + 1;
-                            if byte_counter = 12 then
-                                active <= false;
-                                valid_out <= '1';
-                                byte_counter <= 0;
-                            end if;
-                        end if;               
-                    end if;
-                 else
-                    cs1 <= '1';
-                    valid_out <= '0';
-                    clock_counter <= clock_counter + 1;
-                end if;
-                
-                
-                
+        if rising_edge(clk) then
+            spiclk_prev <= spiclk_toggle;
+            if clockcounter = 19 then -- clock divider 100 to 2.5MHZ
+                clockcounter <= 0;
+                spiclk_toggle <= not spiclk_toggle;
+                spiclk <= spiclk_toggle;
+            else
+                clockcounter <= clockcounter + 1;
             end if;
-        end process;
-    end Behavioral;
+            
+            if spiclk_prev = '0' and spiclk_toggle = '1' then -- rising edge of 2.5MHZ clk
+                case state is
+                    when txfctrl =>
+                        if bit_cnt = 39 then -- stop at bit 39
+                            mosi <= txfctrl_data(39 - bit_cnt);
+                            bit_cnt <= 0;
+                            tx_cs <= '1';
+                            state <= callbuffer;
+                        elsif bit_cnt = 0 then
+                            tx_cs <= '0';
+                            mosi <= txfctrl_data(39);
+                            bit_cnt <= 1;
+                        else
+                            mosi <= txfctrl_data(39 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+
+                            
+                        
+                    when callbuffer => -- send 0x89 write to buffer command
+                        if ready = '1' then
+                            active <= true;
+                            bit_cnt <= 0;
+                            tx_cs <= '0'; -- start exchange
+                        else
+                            tx_cs <= '1'; -- do NOT exchange
+                        end if;
+                        
+                        if active then
+                            if bit_cnt = 7 then -- stop at bit 7
+                                mosi <= tx_buffer_write(0);
+                                bit_cnt <= 0;
+                                state <= timeimp;
+                                active <= false;
+                            elsif bit_cnt = 0 then
+                                tx_cs <= '0'; -- start exchange
+                                mosi <= tx_buffer_write(7);
+                                bit_cnt <= 1;
+                            else
+                                mosi <= tx_buffer_write(7 - bit_cnt);
+                                bit_cnt <= bit_cnt + 1;
+                            end if;
+                        end if;  
+
+
+                    when timeimp =>
+                        if bit_cnt = 31 then -- stop at bit 31
+                            mosi <= current_time(0);
+                            bit_cnt <= 0;
+                            state <= impact;
+                        else
+                            mosi <= current_time(31 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+                        
+                    when impact =>
+                        if bit_cnt = 31 then -- stop at bit 31
+                            mosi <= time_impact(0);
+                            bit_cnt <= 0;
+                            state <= radiu;
+                        else
+                            mosi <= time_impact(31 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+                    
+                    when radiu =>
+                        if bit_cnt = 23 then -- stop at bit 23
+                            mosi <= radius(0);
+                            bit_cnt <= 0;
+                            state <= latit;
+                        else
+                            mosi <= radius(23 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+                        
+                    when latit =>
+                        if bit_cnt = 31 then -- stop at bit 31
+                            mosi <= latitude(0);
+                            bit_cnt <= 0;
+                            state <= longit;
+                        else
+                            mosi <= latitude(31 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+                    
+                    when longit =>
+                        if bit_cnt = 31 then -- stop at bit 31
+                            mosi <= longitude(0);
+                            bit_cnt <= 0;
+                            tx_cs <= '1'; -- stop exchange
+                            state <= txstart;
+                        else
+                            mosi <= longitude(31 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+                
+                    when txstart =>
+                        if bit_cnt = 39 then -- stop at bit 39
+                            mosi <= sys_ctrl(0);
+                            bit_cnt <= 0;
+                            state <= receiver;
+                            tx_cs <= '1';
+                        elsif bit_cnt = 0 then
+                            tx_cs <= '0'; -- start exchange
+                            mosi <= sys_ctrl(39);
+                            bit_cnt <= 1;
+                        else
+                            mosi <= sys_ctrl(39 - bit_cnt);
+                            bit_cnt <= bit_cnt + 1;
+                        end if;
+                              
+                    when receiver =>
+                        valid <= '1';
+                        state <= callbuffer;
+                    
+                end case;
+                
+                if (state = receiver) = false then
+                    valid <= '0';
+                end if;
+            end if;
+            
+        end if;
+    end process;
+
+end Behavioral;
