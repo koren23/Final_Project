@@ -5,6 +5,8 @@ entity transmitter is
   Port (
         clk             :   in      std_logic; -- 100MHZ
         ready           :   in      std_logic;
+        repeat0          :   in      std_logic;
+        start           :   in      std_logic;
         current_time    :   in      std_logic_vector(31 downto 0);
         time_impact     :   in      std_logic_vector(31 downto 0);
         radius          :   in      std_logic_vector(23 downto 0);
@@ -20,15 +22,17 @@ architecture Behavioral of transmitter is
     constant    txfctrl_data        :   std_logic_vector(40 downto 0)    :="1000100000000000000000100100000010011010";
     constant    tx_buffer_write     :   std_logic_vector(7 downto 0)     :="10001001";
     constant    sys_ctrl            :   std_logic_vector(40 downto 0)    :="1000110100000000000000000000000000000010";
+    constant    readstatus          :   std_logic_vector(7 downto 0)     :="00001111";
     
     signal clockcounter     :       integer range 0 to 19   :=0; 
     signal spiclk_toggle    :       std_logic               :='0';
     signal spiclk_prev      :       std_logic               :='0';
     signal active           :       boolean                 :=false; -- for states
     signal bit_cnt          :       integer range 0 to 39   :=0;
+    signal repeat_cnt       :       integer range 0 to 1    :=0; -- for receiver
 
         type states is (txfctrl, callbuffer, timeimp, impact, radiu, latit, longit, txstart, receiver);
-    signal state            :       states                  :=callbuffer;
+    signal state            :       states                  :=txfctrl;
 begin
     process(clk)
     begin
@@ -62,7 +66,7 @@ begin
                             
                         
                     when callbuffer => -- send 0x89 write to buffer command
-                        if ready = '1' then
+                        if start = '1' then
                             active <= true;
                             bit_cnt <= 0;
                             tx_cs <= '0'; -- start exchange
@@ -154,14 +158,38 @@ begin
                         end if;
                               
                     when receiver =>
-                        valid <= '1';
-                        state <= callbuffer;
+                        if repeat_cnt = 0 then
+                            if bit_cnt = 7 then -- stop at bit 7
+                                mosi <= readstatus(0);
+                                bit_cnt <= 0;
+                                state <= receiver;
+                            elsif bit_cnt = 0 then
+                                tx_cs <= '0'; -- start exchange
+                                mosi <= readstatus(7);
+                                bit_cnt <= 1;
+                            else
+                                mosi <= readstatus(7 - bit_cnt);
+                                bit_cnt <= bit_cnt + 1;
+                            end if;
+                            repeat_cnt <= 1;
+                            valid <= '1';
+                        end if;    
+                        
+                        if ready = '1' then -- if ready move on
+                            valid <= '0';
+                            state <= callbuffer;
+                            tx_cs <= '1';
+                        end if;
+                        if repeat0 = '1' then -- check status again
+                            valid <= '0';
+                            repeat_cnt <= 0;
+                        end if;
+                        
+                            
+                        
                     
                 end case;
                 
-                if (state = receiver) = false then
-                    valid <= '0';
-                end if;
             end if;
             
         end if;
