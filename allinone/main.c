@@ -1,0 +1,167 @@
+#include "xparameters.h"
+#include "xil_printf.h"
+#include "lwip/udp.h"
+#include "lwip/init.h"
+#include "lwip/ip_addr.h"
+#include "lwip/pbuf.h"
+#include "netif/xadapter.h" // interface for onboard ethernet network
+#include "xgpio.h"
+#include "sleep.h"
+#define LISTEN_PORT 12345 // port chosen 
+
+XGpio gpio;
+typedef struct { // struct to save the values
+    u32 imptime;
+    u32 currtime;
+    s32 latval;
+    s32 longval;
+    u32 radius;
+} sensor_data;
+sensor_data *data = (sensor_data*)XPAR_AXI_BRAM_CTRL_0_BASEADDR;  // pointer to BRAM location
+struct udp_pcb *receiver_pcb; // UDP control block used by lwip to handle incoming packets
+struct netif server_netif; // structure representing the network interface
+u8_t mac_address[6] = {0x00, 0x18, 0x3E, 0x04, 0x81, 0xD6}; // artyz7-10 mac address
+
+
+
+
+void print_ip(const char *msg, ip_addr_t *ip) { // called in general_initialization()
+    xil_printf("%s: %d.%d.%d.%d\n", msg,ip4_addr1(ip), ip4_addr2(ip),ip4_addr3(ip), ip4_addr4(ip));
+}
+
+
+
+
+void pl_transmitter() {
+    // extract values from the BRAM structure
+    u32 imptime = data->imptime;
+    u32 currtime = data->currtime;
+    s32 latval = data->latval;
+    s32 longval = data->longval;
+    u32 radius = data->radius;
+
+    // write to the GPIO for valid flag
+    XGpio_DiscreteWrite(&gpio, 1, 1);
+    xil_printf("Valid flag set\n");
+
+    xil_printf("Longitude:\t%.3f\n", (double)longval / 1000);
+    xil_printf("Latitude:\t%.3f\n", (double)latval / 1000);
+    xil_printf("Impact time:\t%u\n", imptime);
+    xil_printf("Current time:\t%u\n", currtime);
+    xil_printf("Radius:\t%d\n", radius);
+    xil_printf("Data uploaded to PL ^_^");
+    usleep(10);
+    // clear valid flag after some time
+    XGpio_DiscreteWrite(&gpio, 1, 0);
+    xil_printf("Valid flag cleared\n");
+}
+
+
+
+
+void message_divider(u8 *msg){ // called in udp_receive_callback()
+    s32 longval, latval; // signed int
+    u32 imptime, currtime, radius; // unsigned int
+
+    memcpy(&longval,  msg, 4);   // bytes 0-3 longitude
+    memcpy(&latval,   msg + 4, 4); // bytes 4-7 latitude
+    memcpy(&imptime,  msg + 8, 4); // bytes 8-11 impact time
+    memcpy(&currtime, msg + 12, 4); // bytes 12-15 current time
+    memcpy(&radius, msg + 16, 4); // bytes 12-15 current time
+/*      radius says msg +16 but thats false as it comes from an external source
+        needs to be edited*/
+    data->longval = longval;
+    data->latval = latval;
+    data->imptime = imptime;
+    data->currtime = currtime;
+    data->radius = radius;
+    pl_transmitter();
+}
+
+
+
+
+
+// called automatically by lwip when a UDP packet is received
+// defined as a callback in udp_receiver_init()
+void udp_receive_callback(void *arg,struct udp_pcb *pcb, // not used (both)
+                          struct pbuf *p, // contains the received packet payload
+                          const ip_addr_t *addr, // sender address
+                          u16_t port) {
+    (void)arg; // tells the compiler i wont use it
+    (void)pcb;
+
+    if (p != NULL) { // if valid packet
+        u8 *msg = (u8*)p->payload;
+        xil_printf("Received from %d.%d.%d.%d:%d\n", ip4_addr1(addr), ip4_addr2(addr), ip4_addr3(addr), ip4_addr4(addr), port, msg);
+        message_divider(msg);
+        pbuf_free(p); // frees the pbuffer
+    }
+}
+
+
+
+
+
+void udp_receiver_init(){ // called in main
+    receiver_pcb = udp_new(); // lwip function that creates a new UDP protocol control block
+                        // a structure that lwip uses to manage a UDP socket [port,IP, callback function]
+    if (!receiver_pcb) { // check for error in udp_new()
+        xil_printf("Failed to create receiver PCB\n");
+        return;}
+
+    err_t err = udp_bind(receiver_pcb, IP_ADDR_ANY, LISTEN_PORT); // sets the udp_new() values
+    if (err != ERR_OK) {// err_t being the status of the previus operation
+        xil_printf("UDP bind failed with error %d\n", err);
+        return;}
+
+    udp_recv(receiver_pcb, udp_receive_callback, NULL);
+    // calls udp_receive_callback() with parameters from udp_new()
+    xil_printf("UDP receiver initialized on port %d\n", LISTEN_PORT);
+}
+
+
+
+
+void general_initialization() { // called in main
+    ip_addr_t ipaddr, netmask, gw; // ip_addr_t is a lwIP struct containing gw mask and ip 
+    xil_printf("Starting lwIP UDP Receiver Example\n");
+
+    // goes to ip_addr_t
+    IP4_ADDR(&ipaddr, 192, 168, 0, 27);    // board IP address
+    IP4_ADDR(&netmask, 255, 255, 255, 0);  // subnet mask
+    IP4_ADDR(&gw, 0, 0, 0, 0);             // gateway address
+
+    lwip_init(); // initializes the lwIP TCP/IP stack
+
+    struct netif *netif = &server_netif;
+    // server_netif represents the ethernet interface
+    // pointer is used to interact with lwIP functions that expect a struct netif*
+
+    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_address, 0xe000b000)) {
+        xil_printf("Error adding network interface\n");
+        return;}
+
+    netif_set_default(netif); // lwIP will use this interface for any outgoing traffic
+    netif_set_up(netif); // brings the interface up
+    xil_printf("Link is %s\n", netif_is_link_up(netif) ? "up" : "down");
+    print_ip("Board IP", &ipaddr); // calling printIp function
+
+    XGpio_Initialize(&gpio, 0x41200000);
+    XGpio_SetDataDirection(&gpio, 1, 0x00);
+    xil_printf("XGpio initialized\n");
+
+    
+}
+
+
+
+
+int main() {
+    general_initialization();
+    udp_receiver_init();
+    while (1) {
+        xemacif_input(&server_netif); // EMAC lwIP function that checks ethernet hardware and passes it to lwip functions
+    }
+    return 0;
+}
