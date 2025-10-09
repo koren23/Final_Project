@@ -9,13 +9,20 @@
 #include "sleep.h"
 #define LISTEN_PORT 12345 // port chosen 
 
-XGpio radiusgpio;
-XGpio locationgpio;
-XGpio timegpio;
-
+XGpio gpio;
+typedef struct { // struct to save the values
+    u32 imptime;
+    u32 currtime;
+    s32 latval;
+    s32 longval;
+    u32 radius;
+} sensor_data;
+sensor_data *data = (sensor_data*)XPAR_AXI_BRAM_CTRL_0_BASEADDR;  // pointer to BRAM location
 struct udp_pcb *receiver_pcb; // UDP control block used by lwip to handle incoming packets
 struct netif server_netif; // structure representing the network interface
 u8_t mac_address[6] = {0x00, 0x18, 0x3E, 0x04, 0x81, 0xD6}; // artyz7-10 mac address
+
+
 
 
 void print_ip(const char *msg, ip_addr_t *ip) { // called in general_initialization()
@@ -23,41 +30,56 @@ void print_ip(const char *msg, ip_addr_t *ip) { // called in general_initializat
 }
 
 
-void pl_transmitter(u32 currtime, u32 imptime, s32 latval, s32 longval) {
-    // called in message_divider()
-    
-    XGpio_DiscreteWrite(&locationgpio, 2, longval);
+
+
+void pl_transmitter() {
+    // extract values from the BRAM structure
+    u32 imptime = data->imptime;
+    u32 currtime = data->currtime;
+    s32 latval = data->latval;
+    s32 longval = data->longval;
+    u32 radius = data->radius;
+
+    // write to the GPIO for valid flag
+    XGpio_DiscreteWrite(&gpio, 1, 1);
+    xil_printf("Valid flag set\n");
+
     xil_printf("Longitude:\t%.3f\n", (double)longval / 1000);
-    XGpio_DiscreteWrite(&locationgpio, 1, latval);
     xil_printf("Latitude:\t%.3f\n", (double)latval / 1000);
-    
-    XGpio_DiscreteWrite(&timegpio, 1, imptime);
     xil_printf("Impact time:\t%u\n", imptime);
-    XGpio_DiscreteWrite(&timegpio, 2, currtime);
     xil_printf("Current time:\t%u\n", currtime);
-
-    /*XGpio_DiscreteWrite(&radiusgpio, 1, radiusval);
-    xil_printf("Radius:\t%d\n", radiusval);*/
-    XGpio_DiscreteWrite(&radiusgpio, 2, 1);
-    usleep(10);   
-    XGpio_DiscreteWrite(&radiusgpio, 2, 0);
+    xil_printf("Radius:\t%d\n", radius);
+    xil_printf("Data uploaded to PL ^_^");
     usleep(10);
-
-    xil_printf("data uploaded to pl ^_^");
+    // clear valid flag after some time
+    XGpio_DiscreteWrite(&gpio, 1, 0);
+    xil_printf("Valid flag cleared\n");
 }
+
+
 
 
 void message_divider(u8 *msg){ // called in udp_receive_callback()
     s32 longval, latval; // signed int
-    u32 imptime, currtime; // unsigned int
+    u32 imptime, currtime, radius; // unsigned int
 
     memcpy(&longval,  msg, 4);   // bytes 0-3 longitude
     memcpy(&latval,   msg + 4, 4); // bytes 4-7 latitude
     memcpy(&imptime,  msg + 8, 4); // bytes 8-11 impact time
     memcpy(&currtime, msg + 12, 4); // bytes 12-15 current time
-
-    pl_transmitter(currtime, imptime, latval, longval);
+    memcpy(&radius, msg + 16, 4); // bytes 12-15 current time
+/*      radius says msg +16 but thats false as it comes from an external source
+        needs to be edited*/
+    data->longval = longval;
+    data->latval = latval;
+    data->imptime = imptime;
+    data->currtime = currtime;
+    data->radius = radius;
+    pl_transmitter();
 }
+
+
+
 
 
 // called automatically by lwip when a UDP packet is received
@@ -78,6 +100,9 @@ void udp_receive_callback(void *arg,struct udp_pcb *pcb, // not used (both)
 }
 
 
+
+
+
 void udp_receiver_init(){ // called in main
     receiver_pcb = udp_new(); // lwip function that creates a new UDP protocol control block
                         // a structure that lwip uses to manage a UDP socket [port,IP, callback function]
@@ -94,6 +119,9 @@ void udp_receiver_init(){ // called in main
     // calls udp_receive_callback() with parameters from udp_new()
     xil_printf("UDP receiver initialized on port %d\n", LISTEN_PORT);
 }
+
+
+
 
 void general_initialization() { // called in main
     ip_addr_t ipaddr, netmask, gw; // ip_addr_t is a lwIP struct containing gw mask and ip 
@@ -119,19 +147,14 @@ void general_initialization() { // called in main
     xil_printf("Link is %s\n", netif_is_link_up(netif) ? "up" : "down");
     print_ip("Board IP", &ipaddr); // calling printIp function
 
-    XGpio_Initialize(&radiusgpio, XPAR_XGPIO_1_BASEADDR);
-    XGpio_Initialize(&locationgpio, XPAR_XGPIO_0_BASEADDR);
-    XGpio_Initialize(&timegpio, XPAR_TIME_GPIO_0_BASEADDR);
+    XGpio_Initialize(&gpio, 0x41200000);
+    XGpio_SetDataDirection(&gpio, 1, 0x00);
+    xil_printf("XGpio initialized\n");
 
-    XGpio_SetDataDirection(&radiusgpio, 1, 0x00);
-    XGpio_SetDataDirection(&radiusgpio, 2, 0x00);
-    XGpio_SetDataDirection(&locationgpio, 1, 0x00);
-    XGpio_SetDataDirection(&locationgpio, 2, 0x00);
-    XGpio_SetDataDirection(&timegpio, 1, 0x00);
-    XGpio_SetDataDirection(&timegpio, 2, 0x00);
-
-    xil_printf("GPIOs initialized\n");
+    
 }
+
+
 
 
 int main() {
