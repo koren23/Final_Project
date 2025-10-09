@@ -5,16 +5,13 @@ entity transmitter is
   Port (
         clk             :   in      std_logic; -- 100MHZ
         ready           :   in      std_logic;
-        repeat0          :   in      std_logic;
+        repeat0         :   in      std_logic;
         start           :   in      std_logic;
-        current_time    :   in      std_logic_vector(31 downto 0);
-        time_impact     :   in      std_logic_vector(31 downto 0);
-        radius          :   in      std_logic_vector(23 downto 0);
-        latitude        :   in      std_logic_vector(31 downto 0);
-        longitude       :   in      std_logic_vector(31 downto 0);
+        gpio            :   in      std_logic_vector(151 downto 0);
         valid           :   out     std_logic;
         mosi            :   out     std_logic;
         tx_cs           :   out     std_logic; -- byte to send
+        bramready       :   in      std_logic;
         spiclk          :   out     std_logic); -- 2.5MHZ
 end transmitter;
 
@@ -93,52 +90,52 @@ begin
 
                     when timeimp =>
                         if bit_cnt = 31 then -- stop at bit 31
-                            mosi <= current_time(0);
+                            mosi <= gpio(0);
                             bit_cnt <= 0;
                             state <= impact;
                         else
-                            mosi <= current_time(31 - bit_cnt);
+                            mosi <= gpio(31 - bit_cnt);
                             bit_cnt <= bit_cnt + 1;
                         end if;
                         
                     when impact =>
                         if bit_cnt = 31 then -- stop at bit 31
-                            mosi <= time_impact(0);
+                            mosi <= gpio(32);
                             bit_cnt <= 0;
                             state <= radiu;
                         else
-                            mosi <= time_impact(31 - bit_cnt);
+                            mosi <= gpio(31 - bit_cnt + 32);
                             bit_cnt <= bit_cnt + 1;
                         end if;
                     
                     when radiu =>
                         if bit_cnt = 23 then -- stop at bit 23
-                            mosi <= radius(0);
+                            mosi <= gpio(64);
                             bit_cnt <= 0;
                             state <= latit;
                         else
-                            mosi <= radius(23 - bit_cnt);
+                            mosi <= gpio(23 - bit_cnt + 64);
                             bit_cnt <= bit_cnt + 1;
                         end if;
                         
                     when latit =>
                         if bit_cnt = 31 then -- stop at bit 31
-                            mosi <= latitude(0);
+                            mosi <= gpio(88);
                             bit_cnt <= 0;
                             state <= longit;
                         else
-                            mosi <= latitude(31 - bit_cnt);
+                            mosi <= gpio(31 - bit_cnt +88);
                             bit_cnt <= bit_cnt + 1;
                         end if;
                     
                     when longit =>
                         if bit_cnt = 31 then -- stop at bit 31
-                            mosi <= longitude(0);
+                            mosi <= gpio(120);
                             bit_cnt <= 0;
                             tx_cs <= '1'; -- stop exchange
                             state <= txstart;
                         else
-                            mosi <= longitude(31 - bit_cnt);
+                            mosi <= gpio(31 - bit_cnt + 120);
                             bit_cnt <= bit_cnt + 1;
                         end if;
                 
