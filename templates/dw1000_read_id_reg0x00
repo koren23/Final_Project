@@ -1,0 +1,70 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity test_octet_id is
+    Port (
+        MISO    : in STD_LOGIC;        -- SPI Data from DW1000
+        CLK     : in STD_LOGIC;        -- System Clock 20MHZ
+        BTN     : in STD_LOGIC;        -- Start button
+        LED     : out STD_LOGIC;       -- LED indicator
+        CS      : out STD_LOGIC;       -- SPI Chip Select
+        MOSI    : out STD_LOGIC        -- SPI Data to DW1000
+    );
+end test_octet_id;
+
+architecture Behavioral of test_octet_id is
+
+    type state_type is (IDLE, SEND_CMD, RECEIVE_DATA, DONE);
+    signal state       : state_type := IDLE;
+
+    signal bit_cnt     : integer range 0 to 32 := 0;
+    signal miso_data   : std_logic_vector(7 downto 0) := (others => '0');
+
+    constant REG_ID : std_logic_vector(7 downto 0) := "00000000"; 
+
+begin
+
+ 
+    process(CLK)
+    begin
+        if rising_edge(CLK) then
+            
+            case state is
+                when IDLE =>
+                    CS  <= '1';
+                    led <= '0';
+                    MOSI <= '1';
+                    bit_cnt <= 0;
+                    if BTN = '1' then
+                        state <= SEND_CMD;
+                    end if;
+
+
+                when SEND_CMD =>
+                    CS  <= '0';
+                    MOSI <= REG_ID(7 - bit_cnt); 
+                    if bit_cnt = 7 then
+                        bit_cnt <= 0;
+                        state <= RECEIVE_DATA;
+                    else
+                        bit_cnt <= bit_cnt + 1;
+                    end if;
+
+                when RECEIVE_DATA =>
+                    MOSI <= '1';
+                    miso_data(32 - bit_cnt) <= MISO;
+                    if bit_cnt = 32 then
+                        LED <= '1';
+                        CS  <= '1';
+                    else
+                        bit_cnt <= bit_cnt + 1;
+                    end if;
+
+                when others =>
+                    state <= IDLE;
+            end case;
+        end if;
+    end process;
+
+end Behavioral;
