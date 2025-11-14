@@ -3,9 +3,6 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
 entity transmitter is
-    generic (
-        read_id_reg : STD_LOGIC_VECTOR(7 downto 0)  :="00001111"
-    );
     Port (
         MISO        : in  STD_LOGIC;
         MOSI        : out STD_LOGIC;
@@ -29,19 +26,30 @@ architecture Behavioral of transmitter is
     );
     signal state          : state_type := IDLE;
     
+    -- signals for delay    
+    signal delay_counter  : integer := 0;
+    signal delay_target   : integer := 0;
+    signal return_state   : state_type := IDLE;
     
     signal clock_counter  : integer range 0 to 9            := 0;       -- divide 100 MHz by 10 = 10 MHz
     signal bit_count      : integer range 0 to 255          :=0;
     signal current_byte   : std_logic_vector(7 downto 0)    := (others => '0' );
+    signal init_count     : integer range 0 to 5            :=0;
+    signal write_loop_cnt : integer range 0 to 4            :=0;
+    
     signal data_vector    : std_logic_vector(39 downto 0)   := (others => '0' );
--- signals for delay    
-    signal delay_counter : integer := 0;
-    signal delay_target  : integer := 0;
-    signal return_state  : state_type := IDLE;
-    signal resetMOSI     : boolean    := false;
+    signal resetMOSI      : boolean    := false;
+    signal loop_check     : boolean :=false; -- used to create a delay when cs=1
+    signal write          : boolean :=false;
     
-    signal loop_check          : boolean :=false; -- used to create a delay when cs=1
-    
+    type twobyte_array is array (0 to 1) of std_logic_vector(7 downto 0);
+    type fivebyte_array is array (0 to 4) of std_logic_vector(7 downto 0);
+    constant    read_id_reg      : STD_LOGIC_VECTOR(7 downto 0)  :="00000000";
+    constant    read_status_reg  : STD_LOGIC_VECTOR(7 downto 0)  :="00001111";
+    constant    write_buffer_reg : twobyte_array   := ("10001001", "01011010");
+    constant    write_fctrl      : fivebyte_array := ("10001000", "00000011", "01000000", "00000010", "00000000");
+    constant    write_sysctrl    : fivebyte_array := ("10001101", "00000010", "00000000", "00000000", "00000000");
+
     function delay_done(
         counter : integer;
         target  : integer
@@ -56,26 +64,49 @@ begin
     begin
     
         if rising_edge(CLOCK) then
+         ------------------------------------ 
+        case init_count is
+            when 0 =>
+                current_byte <= read_id_reg;
+                write <= false;
+            when 1 => 
+                current_byte <= read_status_reg;
+                write <= false;
+            when 2 =>
+                current_byte <= write_buffer_reg(write_loop_cnt);
+                write <= true;
+            when 3 =>
+                current_byte <= write_fctrl(write_loop_cnt);
+                write <= true;
+            when 4 =>
+                current_byte <= write_sysctrl(write_loop_cnt);
+                write <= true;
+            when 5 =>
+                current_byte <= read_status_reg;
+                write <= false;
+        end case;
+         ------------------------------------  
         case state is
          ------------------------------------ 
             when IDLE =>            -- cs=1 until button pressed then mosi=reg(msb), go to delay 3clks
                 CSn <= '1';
                 if BUTTON = '1' then
                     CSn <= '0';
-                    MOSI <= read_id_reg(7); -- send last bit
-                    
+                    init_count <= 0;
+                    MOSI <= current_byte(7); -- send last bit
                     resetMOSI <= false;
-                    current_byte <= read_id_reg;
+                    
                     delay_target <= 3; -- call delay func
                     return_state <= SEND_BYTE;
                     state <= DELAY;
                 end if;
         ------------------------------------
             when DELAY =>           -- call delay function check if counter reached limit, return to next state.
-                if resetMOSI <= true then
+                if resetMOSI <= false then
                     MOSI <= '0';
-                else
                     resetMOSI <= true;
+                else
+                    MOSI <= current_byte(7);
                 end if;
                 if delay_done(delay_counter, delay_target) then
                     delay_counter <= 0;
@@ -106,7 +137,30 @@ begin
                     delay_target <= 4;
                     state <= DELAY;
                     SPICLOCK <= '0';
-                    return_state <= RECEIVE;
+                    if write = false then
+                        return_state <= RECEIVE;
+                    else
+                        write_loop_cnt <= write_loop_cnt + 1;
+                        return_state <= SEND_BYTE;
+                        case init_count is
+                            when 2 =>
+                                if write_loop_cnt = 1 then
+                                    write_loop_cnt <= 0;
+                                    return_state <= DONE;
+                                end if;
+                            when 3 =>
+                                if write_loop_cnt = 4 then
+                                    write_loop_cnt <= 0;
+                                    return_state <= DONE;
+                                end if;
+                            when 4 =>
+                                if write_loop_cnt = 4 then
+                                    write_loop_cnt <= 0;
+                                    return_state <= DONE;
+                                end if;
+                            when others =>
+                        end case;
+                    end if;
                     data_vector <= (others => '0' );
                 end if;
         ------------------------------------
@@ -114,7 +168,7 @@ begin
                 if bit_count < 32 then
                     if clock_counter = 0 then --  rising edge clock
                         SPICLOCK <= '1';
-                        data_vector(31 - bit_count) <= MISO;    -- enter data to vector
+                        data_vector(39 - bit_count) <= MISO;    -- enter data to vector
                     elsif clock_counter = 4 then -- falling edge clock
                         SPICLOCK <= '0';
                     elsif clock_counter = 9 then
@@ -148,6 +202,13 @@ begin
                     delay_target <= 3; -- call delay func
                     return_state <= SEND_BYTE;
                     state <= DELAY;
+                    write_loop_cnt <= 0;
+                    if init_count < 5 then
+                        init_count <= init_count + 1;
+                    else
+                        init_count <= 5;
+                    end if;
+                    MOSI <= current_byte(7);
                 end if;
         ------------------------------------
             
