@@ -60,13 +60,9 @@ architecture Behavioral of transmitter is
     constant    TC_PGDELAY       : threebyte_array              := ("11101010", "00001011", "11000000");
     constant    FS_PLLTUNE       : threebyte_array              := ("11101011", "00001011", "10111110");     
 
-    constant    write_buffer_reg : twobyte_array                := ("10001001", "00000000", "00000000", "00000000", 
-                                                                    "00000000", "00000000", "00000000", "00000000", 
-                                                                    "00000000", "00000000", "00000000", "00000000", 
-                                                                    "00000000", "00000000", "00000000", "00000000", 
-                                                                    "00000000", "00000000", "00000000", "00000000");
+    constant    write_buffer_reg : twobyte_array                := ("10001001", "10101011");
                                                                     
-    constant    write_fctrl      : fivebyte_array               := ("10001000", "10011000", "01000000", "00010101", "00000000");
+    constant    write_fctrl      : fivebyte_array               := ("10001000", "00000011", "01000000", "00010101", "00000000");
     constant    write_sysctrl    : fivebyte_array               := ("10001101", "00000010", "00000000", "00000000", "00000000");
     constant    clear_status_reg : sixbyte_array                := ("10001111", "11110000", "00000000", "00000000", "00000000", "00000000");
     
