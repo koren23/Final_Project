@@ -12,7 +12,7 @@ entity receiver is
         CLOCK       : in  STD_LOGIC;                         -- 100MHz system clock
         SWITCH      : in  STD_LOGIC;                         -- start button (trigger)
         DOUT        : out STD_LOGIC_VECTOR(39 downto 0);     -- data received from dw1000
-        BUFFER_DOUT : out STD_LOGIC_VECTOR(151 downto 0)     -- data read from buffer
+        BUFFER_DOUT : out STD_LOGIC_VECTOR(7 downto 0)
     );
 end receiver;
 
@@ -38,12 +38,11 @@ architecture Behavioral of receiver is
     signal current_byte   : std_logic_vector(7 downto 0)    := (others => '0' );
     signal init_count     : integer range 0 to 15           :=0;
     signal write_loop_cnt : integer range 0 to 5            :=0;
-    
+    signal buffer_vector  : std_logic_vector(7 downto 0)    := (others => '0' );
     signal data_vector    : std_logic_vector(39 downto 0)   := (others => '0' );
     signal resetMOSI      : boolean    := false;
     signal loop_check     : boolean :=false; -- used to create a delay when cs=1
     signal write          : boolean :=false;
-    signal buffer_data    : std_logic_vector(151 downto 0)   := (others => '0' );
     type twobyte_array is array (0 to 1) of std_logic_vector(7 downto 0);
     type threebyte_array is array (0 to 2) of std_logic_vector(7 downto 0);
     type fourbyte_array is array (0 to 3) of std_logic_vector(7 downto 0);
@@ -81,9 +80,6 @@ begin
     begin
     
         if rising_edge(CLOCK) then
-            if SWITCH = '0' then -- reset
-                state <= idle;
-            end if;
              ------------------------------------ 
             case init_count is
                     when 0 =>
@@ -196,8 +192,7 @@ begin
                         if write = false then
                             return_state <= RECEIVE;
                             if init_count = 15 then
-                                return_state <= READ_BUFFER_STATE;
-                                buffer_data <= (others => '0');
+                                state <= READ_BUFFER_STATE;
                             end if;
                         else
                             write_loop_cnt <= write_loop_cnt + 1;
@@ -325,10 +320,10 @@ begin
                     end if;
             ------------------------------------
                 when READ_BUFFER_STATE =>
-                    if bit_count < 152 then
+                    if bit_count < 8 then
                         if clock_counter = 0 then --  rising edge clock
                             SPICLOCK <= '1';
-                            buffer_data(151 - bit_count) <= MISO;    -- enter data to vector
+                            buffer_vector(7 - bit_count) <= MISO;    -- enter data to vector
                         elsif clock_counter = 4 then -- falling edge clock
                             SPICLOCK <= '0';
                         elsif clock_counter = 9 then
@@ -342,13 +337,12 @@ begin
                         bit_count <= 0; -- reset counters
                         clock_counter <= 0;
                         SPICLOCK <= '0';
-                        BUFFER_DOUT <= buffer_data;
+                        BUFFER_DOUT <= buffer_vector;
                         -- go to delay 4clks then receive
                         delay_target <= 4;
                         state <= DELAY;
                         return_state <= DONE;
                     end if;
-             ------------------------------------ 
             
             end case;
         end if;
