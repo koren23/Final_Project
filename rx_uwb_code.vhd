@@ -10,9 +10,8 @@ entity receiver is
         SPICLOCK    : out STD_LOGIC;                         -- SPI clock (10 MHz)
         LED         : out STD_LOGIC;
         CLOCK       : in  STD_LOGIC;                         -- 100MHz system clock
-        SWITCH      : in  STD_LOGIC;                         -- start button (trigger)
         DOUT        : out STD_LOGIC_VECTOR(39 downto 0);     -- data received from dw1000
-        BUFFER_DOUT : out STD_LOGIC_VECTOR(7 downto 0)
+        BUFFER_DOUT : out STD_LOGIC_VECTOR(151 downto 0)
     );
 end receiver;
 
@@ -38,7 +37,9 @@ architecture Behavioral of receiver is
     signal current_byte   : std_logic_vector(7 downto 0)    := (others => '0' );
     signal init_count     : integer range 0 to 15           :=0;
     signal write_loop_cnt : integer range 0 to 5            :=0;
-    signal buffer_vector  : std_logic_vector(7 downto 0)    := (others => '0' );
+    signal BUFFER_COUNT   : integer range 0 to 255          :=0;
+    
+    signal buffer_vector  : std_logic_vector(151 downto 0)  := (others => '0' );
     signal data_vector    : std_logic_vector(39 downto 0)   := (others => '0' );
     signal resetMOSI      : boolean    := false;
     signal loop_check     : boolean :=false; -- used to create a delay when cs=1
@@ -139,10 +140,10 @@ begin
              ------------------------------------  
             case state is
              ------------------------------------ 
-                when IDLE =>
-                    CSn <= '1';
+                when IDLE => -- switch is optional - i wont be using it for easier debugging
+--                    CSn <= '1';
                     LED <= '0';
-                    if SWITCH = '1' then
+--                    if SWITCH = '1' then
                         CSn <= '0';
                         init_count <= 0;
                         MOSI <= current_byte(7); -- send last bit
@@ -151,7 +152,7 @@ begin
                         delay_target <= 3; -- call delay func
                         return_state <= SEND_BYTE;
                         state <= DELAY;
-                    end if;
+--                    end if;
             ------------------------------------
                 when DELAY =>           -- call delay function check if counter reached limit, return to next state.
                     if resetMOSI <= false then
@@ -192,7 +193,7 @@ begin
                         if write = false then
                             return_state <= RECEIVE;
                             if init_count = 15 then
-                                state <= READ_BUFFER_STATE;
+                                return_state <= READ_BUFFER_STATE;
                             end if;
                         else
                             write_loop_cnt <= write_loop_cnt + 1;
@@ -320,21 +321,21 @@ begin
                     end if;
             ------------------------------------
                 when READ_BUFFER_STATE =>
-                    if bit_count < 8 then
+                    if BUFFER_COUNT < 152 then
                         if clock_counter = 0 then --  rising edge clock
                             SPICLOCK <= '1';
-                            buffer_vector(7 - bit_count) <= MISO;    -- enter data to vector
+                            buffer_vector(151 - BUFFER_COUNT) <= MISO;    -- enter data to vector
                         elsif clock_counter = 4 then -- falling edge clock
                             SPICLOCK <= '0';
                         elsif clock_counter = 9 then
-                            bit_count <= bit_count + 1;
+                            BUFFER_COUNT <= BUFFER_COUNT + 1;
                         end if;
                         clock_counter <= clock_counter + 1;    
                         if clock_counter = 9 then -- reset counter
                             clock_counter <= 0;
                         end if;
                     else
-                        bit_count <= 0; -- reset counters
+                        BUFFER_COUNT <= 0; -- reset counters
                         clock_counter <= 0;
                         SPICLOCK <= '0';
                         BUFFER_DOUT <= buffer_vector;
