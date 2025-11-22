@@ -11,8 +11,8 @@ entity transmitter is
         LED         : out STD_LOGIC;
         CLOCK       : in  STD_LOGIC;                         -- 100MHz system clock
         BUTTON      : in  STD_LOGIC;                         -- starts tx
-        SWITCH      : in  STD_LOGIC;                         -- starts init
-        DOUT        : out STD_LOGIC_VECTOR(39 downto 0)      -- data received from dw1000
+        DOUT        : out STD_LOGIC_VECTOR(39 downto 0);      -- data received from dw1000
+        DIN         : in  STD_LOGIC_VECTOR(151 downto 0)  
     );
 end transmitter;
 
@@ -24,7 +24,8 @@ architecture Behavioral of transmitter is
         SEND_BYTE,       -- send 1 byte
         RECEIVE,
         DONE,
-        WAIT_FOR_BUTTON
+        WAIT_FOR_BUTTON,
+        WRITE_TO_BUFFER
     );
     signal state          : state_type := IDLE;
     
@@ -37,7 +38,8 @@ architecture Behavioral of transmitter is
     signal bit_count      : integer range 0 to 255          :=0;
     signal current_byte   : std_logic_vector(7 downto 0)    := (others => '0' );
     signal init_count     : integer range 0 to 15           :=0;
-    signal write_loop_cnt : integer range 0 to 5            :=0;
+    signal write_loop_cnt : integer range 0 to 255          :=0;
+    signal buffer_counter : integer range 0 to 20           :=0;
     
     signal data_vector    : std_logic_vector(39 downto 0)   := (others => '0' );
     signal resetMOSI      : boolean    := false;
@@ -49,6 +51,7 @@ architecture Behavioral of transmitter is
     type fourbyte_array is array (0 to 3) of std_logic_vector(7 downto 0);
     type fivebyte_array is array (0 to 4) of std_logic_vector(7 downto 0);
     type sixbyte_array is array (0 to 5) of std_logic_vector(7 downto 0);
+    type twentybyte_array is array (0 to 19) of std_logic_vector(7 downto 0);
     constant    read_id_reg      : STD_LOGIC_VECTOR(7 downto 0) :="00000000";
     constant    read_status_reg  : STD_LOGIC_VECTOR(7 downto 0) :="00001111";
     constant    AGC_TUNE1        : fourbyte_array               := ("11100011", "00000100", "01110000", "10001000");
@@ -59,10 +62,13 @@ architecture Behavioral of transmitter is
     constant    RF_TXCTRL        : sixbyte_array                := ("11101000", "00001100", "11100011", "00111111", "00011110", "00000000");
     constant    TC_PGDELAY       : threebyte_array              := ("11101010", "00001011", "11000000");
     constant    FS_PLLTUNE       : threebyte_array              := ("11101011", "00001011", "10111110");     
-
-    constant    write_buffer_reg : twobyte_array                := ("10001001", "10101011");
                                                                     
-    constant    write_fctrl      : fivebyte_array               := ("10001000", "00000011", "01000000", "00010101", "00000000");
+signal      write_buffer_reg : twentybyte_array                := ("10001001", "00000000", "00000000", "00000000", "00000000", 
+                                                                    "00000000", "00000000", "00000000", "00000000", "00000000", 
+                                                                    "00000000", "00000000", "00000000", "00000000", "00000000", 
+                                                                    "00000000", "00000000", "00000000", "00000000", "00000000");
+                                                                    
+    constant    write_fctrl      : fivebyte_array               := ("10001000", "00010101", "01000000", "00010101", "00000000");
     constant    write_sysctrl    : fivebyte_array               := ("10001101", "00000010", "00000000", "00000000", "00000000");
     constant    clear_status_reg : sixbyte_array                := ("10001111", "11110000", "00000000", "00000000", "00000000", "00000000");
     
@@ -137,10 +143,10 @@ begin
              ------------------------------------  
             case state is
              ------------------------------------ 
-                when IDLE =>            -- cs=1 until button pressed then mosi=reg(msb), go to delay 3clks
-                    CSn <= '1';
+                when IDLE =>            -- switch here is optional was used for debugging
+--                    CSn <= '1';
                     LED <= '0';
-                    if SWITCH = '1' then
+--                    if SWITCH = '1' then
                         CSn <= '0';
                         init_count <= 0;
                         MOSI <= current_byte(7); -- send last bit
@@ -149,7 +155,7 @@ begin
                         delay_target <= 3; -- call delay func
                         return_state <= SEND_BYTE;
                         state <= DELAY;
-                    end if;
+--                    end if;
             ------------------------------------
                 when DELAY =>           -- call delay function check if counter reached limit, return to next state.
                     if resetMOSI <= false then
@@ -234,7 +240,7 @@ begin
                                         return_state <= DONE;
                                     end if;
                                 when 10 =>
-                                    if write_loop_cnt = 1 then
+                                    if write_loop_cnt = 19 then
                                         write_loop_cnt <= 0;
                                         return_state <= DONE;
                                     end if;
@@ -323,6 +329,15 @@ begin
                 when WAIT_FOR_BUTTON =>
                     CSn <= '1';
                     if BUTTON = '1' then
+                        state <= WRITE_TO_BUFFER;
+                        buffer_counter <= 0;
+                        
+                        
+
+                    end if;
+            ------------------------------------
+                when WRITE_TO_BUFFER =>
+                    if buffer_counter = 19 then
                         init_count <= 10;
                         CSn <= '0';
                         MOSI <= current_byte(7); -- send last bit
@@ -330,6 +345,10 @@ begin
                         delay_target <= 3; -- call delay func
                         return_state <= SEND_BYTE;
                         state <= DELAY;
+                        
+                    else
+                        write_buffer_reg(buffer_counter + 1) <= DIN((8*(buffer_counter+1)) -1 downto 8*buffer_counter);
+                        buffer_counter <= buffer_counter + 1;
                     end if;
             ------------------------------------
             end case;
