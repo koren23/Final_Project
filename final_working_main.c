@@ -24,46 +24,36 @@ void print_ip(const char *msg, ip_addr_t *ip) {
 }
 
 void pl_transmitter(char msg[256]){
-    if (strlen(msg) < 16) {
-        xil_printf("Error: Message too short. Must be at least 16 characters.\n");
-        return;
+    u32 currtime, imptime, latval, longval;
+    for (int i = 0; msg[i] != '\0'; i++) {
+        if(i<32){currtime = (u32)msg[i];} 
+        else if(i<64){imptime = (u32)msg[i-32];}
+        else if(i<96){latval = (u32)msg[i-64];}
+        else if(i<128){longval = (u32)msg[i-96];}
     }
-
-    u32 currtime = 0, imptime = 0, latval = 0, longval = 0;
-
-    currtime = (msg[0] << 24) | (msg[1] << 16) | (msg[2] << 8) | msg[3];
-    imptime = (msg[4] << 24) | (msg[5] << 16) | (msg[6] << 8) | msg[7];
-    latval   = (msg[8] << 24) | (msg[9] << 16) | (msg[10] << 8) | msg[11];
-    longval  = (msg[12] << 24) | (msg[13] << 16) | (msg[14] << 8) | msg[15];
 
     XGpio_DiscreteWrite(&gpio, 1, 0x1);
     XGpio_DiscreteWrite(&gpio, 2, currtime);
-    xil_printf("Current time:\t%02X %02X %02X %02X\n", (u8_t)msg[0], (u8_t)msg[1], (u8_t)msg[2], (u8_t)msg[3]);
+    xil_printf("Current time:\t%u\n", currtime);
     usleep(10);
-
     XGpio_DiscreteWrite(&gpio, 1, 0x2);
     XGpio_DiscreteWrite(&gpio, 2, imptime);
-    xil_printf("Impact time:\t%02X %02X %02X %02X\n", (u8_t)msg[4], (u8_t)msg[5], (u8_t)msg[6], (u8_t)msg[7]);
+    xil_printf("Impact time:\t%u\n", imptime);
     usleep(10);
-
-    XGpio_DiscreteWrite(&gpio, 1, 0x3);
-    XGpio_DiscreteWrite(&gpio, 2, latval);
-    xil_printf("Latitude:\t%02X %02X %02X %02X\n", (u8_t)msg[8], (u8_t)msg[9], (u8_t)msg[10], (u8_t)msg[11]);
-    usleep(10);
-
     XGpio_DiscreteWrite(&gpio, 1, 0x4);
+    XGpio_DiscreteWrite(&gpio, 2, latval);
+    xil_printf("Latitude:\t%.3f\n", (double)latval / 1000);
+    usleep(10);
+    XGpio_DiscreteWrite(&gpio, 1, 0x5);
     XGpio_DiscreteWrite(&gpio, 2, longval);
-    xil_printf("Longitude:\t%02X %02X %02X %02X\n", (u8_t)msg[12], (u8_t)msg[13], (u8_t)msg[14], (u8_t)msg[15]);
+    xil_printf("Longitude:\t%.3f\n", (double)longval / 1000);
     usleep(10);
-
-    xil_printf("Data uploaded to PL ^_^\n");
+    xil_printf("Data uploaded to PL ^_^");
     usleep(10);
-
     // clear valid flag
     XGpio_DiscreteWrite(&gpio, 1, 0);
     xil_printf("Flag cleared\n");
 }
-
 
 void udp_receive_callback(void *arg, // a value i can set so itll send it back when called - not used
                           struct udp_pcb *pcb, // contains the lwip state for this udp - isnt used cos not replying
@@ -79,12 +69,7 @@ void udp_receive_callback(void *arg, // a value i can set so itll send it back w
 
         memcpy(msg, p->payload, len); // copies len bytes from pbuff to msg
         msg[len] = '\0'; // sets a null terminator
-        xil_printf("Received from %d.%d.%d.%d:%d ->", ip4_addr1(addr), ip4_addr2(addr), ip4_addr3(addr), ip4_addr4(addr), port);
-        for (size_t i = 0; i < len; i++) {
-            xil_printf(" %02X", (u8_t)msg[i]);
-        }
-        xil_printf("\n");
-
+        xil_printf("Received from %d.%d.%d.%d:%d -> %s\n", ip4_addr1(addr), ip4_addr2(addr), ip4_addr3(addr), ip4_addr4(addr), port, msg);
         pl_transmitter(msg);
         pbuf_free(p); // frees the pbuffer
     }
