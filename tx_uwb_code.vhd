@@ -8,24 +8,24 @@ entity transmitter is
         MOSI        : out STD_LOGIC;
         CSn         : out STD_LOGIC;
         SPICLOCK    : out STD_LOGIC;                         -- SPI clock (10 MHz)
-        LED         : out STD_LOGIC;
+        LED         : out STD_LOGIC;                         -- indicates data transmitted
         CLOCK       : in  STD_LOGIC;                         -- 100MHz system clock
-        BUTTON      : in  STD_LOGIC;                         -- starts tx
-        DOUT        : out STD_LOGIC_VECTOR(39 downto 0);      -- data received from dw1000
-        DIN         : in  STD_LOGIC_VECTOR(151 downto 0)  
+        START       : in  STD_LOGIC_vector(2 downto 0);      -- starts tx
+        DOUT        : out STD_LOGIC_VECTOR(39 downto 0);     -- data received from dw1000 SPI
+        DIN         : in  STD_LOGIC_VECTOR(31 downto 0)      -- data to transmit
     );
 end transmitter;
 
 architecture Behavioral of transmitter is
 -- state machine
     type state_type is (
-        IDLE,            -- wait for button
+        IDLE,
         DELAY,           -- delay
-        SEND_BYTE,       -- send 1 byte
-        RECEIVE,
-        DONE,
-        WAIT_FOR_BUTTON,
-        WRITE_TO_BUFFER
+        SEND_BYTE,       -- send 8 bits
+        RECEIVE,         -- receive 32 bits
+        DONE,            -- update init_count
+        WAIT_FOR_START, -- done initializing if start - send data
+        WRITE_TO_BUFFER  -- save data to buffer data array
     );
     signal state          : state_type := IDLE;
     
@@ -33,7 +33,8 @@ architecture Behavioral of transmitter is
     signal delay_counter  : integer := 0;
     signal delay_target   : integer := 0;
     signal return_state   : state_type := IDLE;
-    
+
+    -- counters    
     signal clock_counter  : integer range 0 to 9            := 0;       -- divide 100 MHz by 10 = 10 MHz
     signal bit_count      : integer range 0 to 255          :=0;
     signal current_byte   : std_logic_vector(7 downto 0)    := (others => '0' );
@@ -41,11 +42,14 @@ architecture Behavioral of transmitter is
     signal write_loop_cnt : integer range 0 to 255          :=0;
     signal buffer_counter : integer range 0 to 20           :=0;
     
-    signal data_vector    : std_logic_vector(39 downto 0)   := (others => '0' );
+    -- booleans
     signal resetMOSI      : boolean    := false;
     signal loop_check     : boolean :=false; -- used to create a delay when cs=1
     signal write          : boolean :=false;
     
+    -- data vectors and arrays
+    signal din_temp       : std_logic_vector(151 downto 0)  := (others => '0' );
+    signal data_vector    : std_logic_vector(39 downto 0)   := (others => '0' );
     type twobyte_array is array (0 to 1) of std_logic_vector(7 downto 0);
     type threebyte_array is array (0 to 2) of std_logic_vector(7 downto 0);
     type fourbyte_array is array (0 to 3) of std_logic_vector(7 downto 0);
@@ -61,18 +65,16 @@ architecture Behavioral of transmitter is
     constant    write_power_ctrl : sixbyte_array                := ("11011110", "00000000", "01001000", "00101000", "00001000", "00001110");
     constant    RF_TXCTRL        : sixbyte_array                := ("11101000", "00001100", "11100011", "00111111", "00011110", "00000000");
     constant    TC_PGDELAY       : threebyte_array              := ("11101010", "00001011", "11000000");
-    constant    FS_PLLTUNE       : threebyte_array              := ("11101011", "00001011", "10111110");     
-                                                                    
-signal      write_buffer_reg : twentybyte_array                := ("10001001", "00000000", "00000000", "00000000", "00000000", 
+    constant    FS_PLLTUNE       : threebyte_array              := ("11101011", "00001011", "10111110");                                                             
+    signal      write_buffer_reg : twentybyte_array             := ("10001001", "00000000", "00000000", "00000000", "00000000", 
                                                                     "00000000", "00000000", "00000000", "00000000", "00000000", 
                                                                     "00000000", "00000000", "00000000", "00000000", "00000000", 
-                                                                    "00000000", "00000000", "00000000", "00000000", "00000000");
-                                                                    
+                                                                    "00000000", "00000000", "00000000", "00000000", "00000000");                                            
     constant    write_fctrl      : fivebyte_array               := ("10001000", "00010101", "01000000", "00010101", "00000000");
     constant    write_sysctrl    : fivebyte_array               := ("10001101", "00000010", "00000000", "00000000", "00000000");
     constant    clear_status_reg : sixbyte_array                := ("10001111", "11110000", "00000000", "00000000", "00000000", "00000000");
     
-    function delay_done(
+    function delay_done( -- checked when delay to know if delay = done
         counter : integer;
         target  : integer
     ) return boolean is
@@ -87,7 +89,7 @@ begin
     
         if rising_edge(CLOCK) then
              ------------------------------------ 
-            case init_count is
+            case init_count is -- give current_byte a value based on init_count and set write value
                 when 0 =>
                     current_byte <= read_id_reg;
                     write <= false;
@@ -120,6 +122,7 @@ begin
                     write <= true;
 
                     
+                -- start transmittion
                 when 10 =>
                     current_byte <= write_buffer_reg(write_loop_cnt);
                     write <= true;
@@ -143,28 +146,25 @@ begin
              ------------------------------------  
             case state is
              ------------------------------------ 
-                when IDLE =>            -- switch here is optional was used for debugging
---                    CSn <= '1';
+                when IDLE =>         
                     LED <= '0';
---                    if SWITCH = '1' then
                         CSn <= '0';
+                        resetMOSI <= false;
                         init_count <= 0;
                         MOSI <= current_byte(7); -- send last bit
-                        resetMOSI <= false;
                         
                         delay_target <= 3; -- call delay func
                         return_state <= SEND_BYTE;
                         state <= DELAY;
---                    end if;
             ------------------------------------
-                when DELAY =>           -- call delay function check if counter reached limit, return to next state.
+                when DELAY =>
                     if resetMOSI <= false then
                         MOSI <= '0';
                         resetMOSI <= true;
                     else
                         MOSI <= current_byte(7);
                     end if;
-                    if delay_done(delay_counter, delay_target) then
+                    if delay_done(delay_counter, delay_target) then -- call delay func
                         delay_counter <= 0;
                         state <= return_state;
                     else
@@ -198,7 +198,7 @@ begin
                         else
                             write_loop_cnt <= write_loop_cnt + 1;
                             return_state <= SEND_BYTE;
-                            case init_count is
+                            case init_count is -- set loop count for transmittion
                                 when 2 =>
                                     if write_loop_cnt = 3 then
                                         write_loop_cnt <= 0;
@@ -307,7 +307,7 @@ begin
                         write_loop_cnt <= 0;
                         if init_count < 10 then
                             if init_count = 9 then
-                                return_state <= WAIT_FOR_BUTTON;
+                                return_state <= WAIT_FOR_START;
                             end if;
                             init_count <= init_count + 1;
                             
@@ -318,7 +318,7 @@ begin
 --                                    init_count <= init_count + 1;
                                 end if;
                             elsif init_count = 15 then
-                                return_state <= WAIT_FOR_BUTTON;
+                                return_state <= WAIT_FOR_START;
                             else
                                 init_count <= init_count + 1;
                             end if;
@@ -326,15 +326,28 @@ begin
                         end if;
                     end if;
             ------------------------------------
-                when WAIT_FOR_BUTTON =>
+                when WAIT_FOR_START =>
                     CSn <= '1';
-                    if BUTTON = '1' then
-                        state <= WRITE_TO_BUFFER;
-                        buffer_counter <= 0;
+                    case START is
+                        when "000" =>
+                            state <= WRITE_TO_BUFFER;
+                            buffer_counter <= 0;
+                        when "001" => -- time now
+                            DIN_TEMP(151 downto 120) <= din_temp;
+                        when "010" => -- time of impact
+                            DIN_TEMP(119 downto 88) <= din_temp;
+                        when "011" => -- radius
                         
                         
-
-                    end if;
+                                -- not set yet
+                                
+                                
+                        when "100" => -- latidue
+                            DIN_TEMP(63 downto 32) <= din_temp;
+                        when "101" => -- longitude
+                            DIN_TEMP(31 downto 0) <= din_temp;
+                    
+                    end case;
             ------------------------------------
                 when WRITE_TO_BUFFER =>
                     if buffer_counter = 19 then
@@ -347,7 +360,7 @@ begin
                         state <= DELAY;
                         
                     else
-                        write_buffer_reg(buffer_counter + 1) <= DIN((8*(buffer_counter+1)) -1 downto 8*buffer_counter);
+                        write_buffer_reg(buffer_counter + 1) <= din_temp((8*(buffer_counter+1)) -1 downto 8*buffer_counter);
                         buffer_counter <= buffer_counter + 1;
                     end if;
             ------------------------------------
