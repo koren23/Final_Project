@@ -11,6 +11,7 @@
 #define LISTEN_PORT 12345 // port chosen - needs to be changed
 #define BUFFER_SIZE 4096 // log max size
 #define Max_Size_Per_Message 256 // log max size per message
+#define PRINTF_FLOAT
 
 
 
@@ -31,7 +32,7 @@ char tempstring[Max_Size_Per_Message] = {0};
 void log_printer(const char *data_string){ // in charge of adding new data to previous and sending it in
                                            // the format of a nextion command for log
     char temp[Max_Size_Per_Message];
-    snprintf(temp, sizeof(temp), "\r%s",data_string); // saves \r + string to temp
+    snprintf(temp, sizeof(temp), "%s%c" ,data_string ,0x0A); // saves 0x0A = enter + string to temp
     size_t needed = strlen(temp); 
     size_t current = strlen(message_buffer);
     if (current + needed >= BUFFER_SIZE) {
@@ -73,17 +74,18 @@ void pl_transmitter(char msg[256]){
     memcpy(&latval, msg + 8, 4);
     memcpy(&longval, msg + 12, 4);
 
-    xil_printf("page 0%c",0xFFFFFF); // go to page 0 - data page
+    xil_printf("page 0%c%c%c",0xFF,0xFF,0xFF); // go to page 0 - data page
 
     char currstr[32];
     format_timestamp(currtime, currstr, sizeof(currstr));
-    xil_printf("curt.txt=\"%s\"%c",currstr,0xFFFFFF);
+    xil_printf("curt.txt=\"%s\"%c%c%c",currstr,0xFF,0xFF,0xFF);
 
     char impstr[32];
     format_timestamp(imptime, impstr, sizeof(impstr));
-    xil_printf("curt.txt=\"%s\"%c",impstr,0xFFFFFF);
+    xil_printf("impt.txt=\"%s\"%c%c%c",impstr,0xFF,0xFF,0xFF);
     
-    xil_printf("landmark.txt=\"(%.3f,%.3f)\"",(double)latval / 1000 , (double)longval / 1000 ,0xFFFFFF);
+    xil_printf("landmark.txt=\"(%d.%03d,%d.%03d)\"%c%c%c", latval / 1000, latval % 1000,longval / 1000, longval % 1000,0xFF, 0xFF, 0xFF);
+
     
     XGpio_DiscreteWrite(&gpio, 1, 0x1);
     XGpio_DiscreteWrite(&gpio, 2, currtime);
@@ -118,7 +120,7 @@ void pl_transmitter(char msg[256]){
     usleep(10);
     // clear valid flag
     XGpio_DiscreteWrite(&gpio, 1, 0);
-    log_printer("Flag cleare");
+    log_printer("Flag clear");
 }
 
 void udp_receive_callback(void *arg, // a value i can set so itll send it back when called - not used
@@ -167,8 +169,8 @@ void general_initialization() {
     ip_addr_t ipaddr, netmask, gw; // declaration of 3 variables ... ip_addr_t is a struct from lwIP
     log_printer("Starting lwIP UDP Receiver Example");
 
-    IP4_ADDR(&ipaddr, 192, 168, 0, 27);    // board IP address
-    IP4_ADDR(&netmask, 255, 255, 255, 0);  // subnet mask
+    IP4_ADDR(&ipaddr, 169, 254, 201, 150);    // board IP address
+    IP4_ADDR(&netmask, 255, 255, 0, 0);  // subnet mask
     IP4_ADDR(&gw, 0, 0, 0, 0);             // gateway address
     lwip_init(); // lwIP function that restarts everything there
     struct netif *netif = &server_netif; // pointer to the global server_netif
