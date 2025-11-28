@@ -44,7 +44,9 @@ void log_printer(const char *data_string){ // in charge of adding new data to pr
 
 
 void print_ip(const char *msg, ip_addr_t *ip) { // gets called in general_initialization
-    snprintf(tempstring, sizeof(tempstring), "%s: %d.%d.%d.%d", msg, ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip));
+    snprintf(tempstring, sizeof(tempstring), "%s: %d.%d.%d.%d", msg, 
+                                                                ip4_addr1(ip), ip4_addr2(ip), 
+                                                                ip4_addr3(ip), ip4_addr4(ip));
     log_printer(tempstring);
 }
 
@@ -157,20 +159,23 @@ void udp_receive_callback(void *arg, // a value i can set so itll send it back w
 
 
 void udp_receiver_init(){ // called in main
-    receiver_pcb = udp_new(); 
+    receiver_pcb = udp_new(); // creates a struct (receiver_pcb) with ip port and callback func
     if (!receiver_pcb) {
         log_printer("Failed to create receiver PCB");
         return;
     }
 
-    err_t err = udp_bind(receiver_pcb, IP_ADDR_ANY, LISTEN_PORT); // listens to new packets
+    err_t err = udp_bind(receiver_pcb, IP_ADDR_ANY, LISTEN_PORT); // udp_bind() makes receiver pcb listen 
+                                                                  // to this port on selected ip (any)
+    // err_t is a lwip error type
     if (err != ERR_OK) {
         snprintf(tempstring, sizeof(tempstring),"UDP bind failed with error %d", err);
         log_printer(tempstring);
         return;
     }
 
-    udp_recv(receiver_pcb, udp_receive_callback, NULL); // udp_recv calls udp_receive_callback with all its parameters from receiver_pcb
+    udp_recv(receiver_pcb, udp_receive_callback, NULL); // udp_recv calls udp_receive_callback 
+                                                        // with all its parameters from receiver_pcb
     snprintf(tempstring, sizeof(tempstring),"UDP receiver initialized on port %d", LISTEN_PORT);
     log_printer(tempstring);
 }
@@ -178,26 +183,30 @@ void udp_receiver_init(){ // called in main
 
 
 void general_initialization() {
-    ip_addr_t ipaddr, netmask, gw; // declaration of 3 variables ... ip_addr_t is a struct from lwIP
+    ip_addr_t ipaddr, netmask, gw; // declaration of 3 variables - ip_addr_t is a struct from lwIP
     log_printer("Starting lwIP UDP Receiver Example");
 
     IP4_ADDR(&ipaddr, 192, 168, 0, 27);    // board IP address
     IP4_ADDR(&netmask, 255, 255, 255, 0);  // subnet mask
     IP4_ADDR(&gw, 0, 0, 0, 0);             // gateway address
-    lwip_init(); // lwIP function that restarts everything there
+
+    lwip_init(); // lwIP function that initializes (resets internal data timers and protocols)
     struct netif *netif = &server_netif; // pointer to the global server_netif
-//  function the restarts the ethernet interface
-//  using the pointer it transfers that data into server_netif
-    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_address, 0xe000b000)) {
+                                        // will hold all information about the board network interface
+
+    if (!xemac_add(netif, &ipaddr, &netmask, &gw, mac_address, 0xe000b000)) { // adds an ethernet mac interface to lwip
         log_printer("Error adding network interface");
         return;
     }
+
     netif_set_default(netif); // sets netif as the default network interface
     netif_set_up(netif); // marks the network interface as active
+
     snprintf(tempstring, sizeof(tempstring),"Link is %s", netif_is_link_up(netif) ? "up" : "down");
     log_printer(tempstring);
     print_ip("Board IP", &ipaddr);
 
+    // initialize gpios
     XGpio_Initialize(&gpio, XPAR_XGPIO_0_BASEADDR);
     XGpio_SetDataDirection(&gpio, 1, 0x00);
     XGpio_SetDataDirection(&gpio, 2, 0x00);
@@ -214,7 +223,7 @@ int main() {
     log_printer("UDP Receiver Initalization function done");
 
     while (1) {
-        xemacif_input(&server_netif);
+        xemacif_input(&server_netif); // checks for packets, puts it in pbuf and passes it down to netif
     }
     return 0;
 }
