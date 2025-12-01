@@ -333,9 +333,9 @@ begin
                             state <= WRITE_TO_BUFFER;
                             buffer_counter <= 0;
                         when "001" => -- time now
-                            DIN_TEMP(151 downto 120) <= din_temp;
+                            DIN_TEMP(151 downto 120) <= DIN;
                         when "010" => -- time of impact
-                            DIN_TEMP(119 downto 88) <= din_temp;
+                            DIN_TEMP(119 downto 88) <= DIN;
                         when "011" => -- radius
                         
                         
@@ -343,10 +343,11 @@ begin
                                 
                                 
                         when "100" => -- latidue
-                            DIN_TEMP(63 downto 32) <= din_temp;
+                            DIN_TEMP(63 downto 32) <= DIN;
                         when "101" => -- longitude
-                            DIN_TEMP(31 downto 0) <= din_temp;
-                    
+                            DIN_TEMP(31 downto 0) <= DIN;
+                        when others =>
+                        
                     end case;
             ------------------------------------
                 when WRITE_TO_BUFFER =>
