@@ -1,7 +1,7 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
-entity adc_code is
+entity main is
     Port ( clk : in STD_LOGIC; -- 100MHZ
            btn : in STD_LOGIC; -- btn for start (will be replaced with flag or whatever)
            rd : out STD_LOGIC; -- io9
@@ -12,11 +12,12 @@ entity adc_code is
            MA : out STD_LOGIC_VECTOR(3 downto 0); -- write MA address
            D1 : in STD_LOGIC_VECTOR(3 downto 0); -- io7-4
            D0 : in STD_LOGIC_VECTOR(3 downto 0); -- io3-0
-           DataBusOut : out STD_LOGIC_VECTOR(23 downto 0) -- output of bus
+           DataBusOut : out STD_LOGIC_VECTOR(23 downto 0); -- output of bus
+           data_ready : out STD_LOGIC
            );
-end adc_code;
+end main;
 
-architecture Behavioral of adc_code is
+architecture Behavioral of main is
  type state_type is (
         idle, 
         start_conv,
@@ -35,6 +36,7 @@ begin
             case state is
 
                 when idle =>
+                    data_ready <= '0';
                     if btn = '1' then
                         MAenable <= '0'; -- MA is 'Z'
                         state <= start_conv;
@@ -89,6 +91,7 @@ begin
                             rd <= '1'; -- rise RD
                             DataBusOut <= std_logic_vector(to_unsigned(to_integer(unsigned(D0 & D1)) * 5e6 / 256,DataBusOut'length));  -- in uV
                             -- convert D0&D1 to integer multiply by 5e6/256 which results w voltage , convert it to stdlogic
+                            data_ready <= '1';
                         elsif counter = 152 then
                             cs <= '1'; -- rise CS
                         end if;
