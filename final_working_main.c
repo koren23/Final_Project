@@ -15,7 +15,8 @@
 
 
 // global variables
-XGpio gpio; // gpio points to the XGpio struct supplied by xilinx 
+XGpio gpio_out;
+XGpio gpio_in;// gpio points to the XGpio struct supplied by xilinx 
             // (containts base address pins state configs(input or output) etc)
 
 struct udp_pcb *receiver_pcb; // receiver_pcb points to a udp_pcb - contains port num local-ip
@@ -91,29 +92,41 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     xil_printf("landmark.txt=\"(%d.%03d,%d.%03d)\"%c%c%c", latval / 1000, latval % 1000,longval / 1000, longval % 1000,0xFF, 0xFF, 0xFF);
 
     
-    XGpio_DiscreteWrite(&gpio, 1, 0x1);// flag 1
-    XGpio_DiscreteWrite(&gpio, 2, currtime);
+    XGpio_DiscreteWrite(&gpio_out, 1, 0x1);// flag 1
+    XGpio_DiscreteWrite(&gpio_out, 2, currtime);
     snprintf(tempstring, sizeof(tempstring), "Current time:\t%u", currtime);
     log_printer(tempstring);
 
     usleep(10);
 
-    XGpio_DiscreteWrite(&gpio, 1, 0x2); // flag 2
-    XGpio_DiscreteWrite(&gpio, 2, imptime);
+    XGpio_DiscreteWrite(&gpio_out, 1, 0x2); // flag 2
+    XGpio_DiscreteWrite(&gpio_out, 2, imptime);
     snprintf(tempstring, sizeof(tempstring), "Impact time:\t%u", imptime);
     log_printer(tempstring);
 
     usleep(10);
 
-    XGpio_DiscreteWrite(&gpio, 1, 0x4); // flag 4 (3 will be radius)
-    XGpio_DiscreteWrite(&gpio, 2, latval);
+    XGpio_DiscreteWrite(&gpio_out, 1, 0x3); // flag 3
+    int value_of_adc = XGpio_DiscreteRead(&gpio_in, 2);
+    while(value_of_adc != 1){
+        value_of_adc = XGpio_DiscreteRead(&gpio_in, 2); // read flag until its 1
+    }
+    u32 radius = XGpio_DiscreteRead(&gpio_in, 1);
+    snprintf(tempstring, sizeof(tempstring), "Radius:\t%u", radius);
+    log_printer(tempstring);
+    xil_printf("radius.txt=\"%s\"%c%c%c",radius,0xFF,0xFF,0xFF);
+
+    usleep(10);
+
+    XGpio_DiscreteWrite(&gpio_out, 1, 0x4); // flag 4
+    XGpio_DiscreteWrite(&gpio_out, 2, latval);
     snprintf(tempstring, sizeof(tempstring), "Latitude:\t%.3f", (double)latval / 1000);
     log_printer(tempstring);
     
     usleep(10);
 
-    XGpio_DiscreteWrite(&gpio, 1, 0x5); // flag 5
-    XGpio_DiscreteWrite(&gpio, 2, longval);
+    XGpio_DiscreteWrite(&gpio_out, 1, 0x5); // flag 5
+    XGpio_DiscreteWrite(&gpio_out, 2, longval);
     snprintf(tempstring, sizeof(tempstring), "Longitude:\t%.3f", (double)longval / 1000);
     log_printer(tempstring);
 
@@ -123,7 +136,7 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
 
     usleep(10);
     // clear valid flag
-    XGpio_DiscreteWrite(&gpio, 1, 0);// clear flag (0)
+    XGpio_DiscreteWrite(&gpio_out, 1, 0);// clear flag (0)
     log_printer("Flag clear");
 }
 
@@ -199,9 +212,13 @@ void general_initialization() {
 
     		
     // initialize gpios
-    XGpio_Initialize(&gpio, XPAR_XGPIO_0_BASEADDR);
-    XGpio_SetDataDirection(&gpio, 1, 0x00);
-    XGpio_SetDataDirection(&gpio, 2, 0x00);
+    XGpio_Initialize(&gpio_out, XPAR_XGPIO_0_BASEADDR);
+    XGpio_SetDataDirection(&gpio_out, 1, 0x00);
+    XGpio_SetDataDirection(&gpio_out, 2, 0x00);
+
+    XGpio_Initialize(&gpio_in, XPAR_XGPIO_1_BASEADDR);
+    XGpio_SetDataDirection(&gpio_in, 1, 0xFFFFFFFF);
+    XGpio_SetDataDirection(&gpio_in, 2, 0xFFFFFFFF);
     log_printer("GPIOs initialized");
 }
 
