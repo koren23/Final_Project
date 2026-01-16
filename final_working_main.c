@@ -17,16 +17,15 @@
 #define BRAM_END     0x4000000F // end address of bram (i set it so i only see the first words)
 #define BRAM_WORDS   ((BRAM_END - BRAM_START + 1) / 4) // (number of bytes in bram)/(number of bytes per word)
 
+
+
 volatile uint32_t *bram = (uint32_t *)BRAM_START; // declare bram pointer to the memory address (bram start) volatile means it wont cache it bcs it changes
 uint32_t previous[BRAM_WORDS]; // previous is an array that saves the bram values
 
 struct udp_pcb *receiver_pcb; // receiver_pcb points to a udp_pcb - contains port num local-ip
-                        // it points to a callback function that activates when receiving data
-                        
+                        // it points to a callback function that activates when receiving data                    
 struct netif server_netif; // server_netif points to netif (contains  ip subnet gateway mac etc)
 u8_t mac_address[6] = {0x00, 0x18, 0x3E, 0x04, 0x81, 0xD6}; // artyz7-10 mac address
-static char message_buffer[BUFFER_SIZE] = {0};
-char tempstring[Max_Size_Per_Message] = {0};
 
 
 
@@ -65,13 +64,13 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
 
     char currstr[32];
     format_timestamp(currtime, currstr, sizeof(currstr));// convert unix to display time
-    xil_printf("curt.txt=\"%s\"%c%c%c",currstr,0xFF,0xFF,0xFF); // change to different uart
+    xil_printf("%c%c%ccurt.txt=\"%s\"%c%c%c\n",0xFF,0xFF,0xFF,currstr,0xFF,0xFF,0xFF); // change to different uart
 
     char impstr[32];
     format_timestamp(imptime, impstr, sizeof(impstr));// convert unix to display time
-    xil_printf("impt.txt=\"%s\"%c%c%c",impstr,0xFF,0xFF,0xFF); // change to different uart
+    xil_printf("%c%c%cimpt.txt=\"%s\"%c%c%c\n",0xFF,0xFF,0xFF,impstr,0xFF,0xFF,0xFF); // change to different uart
     
-    xil_printf("landmark.txt=\"(%d.%03d,%d.%03d)\"%c%c%c", latval / 1000, latval % 1000,longval / 1000, longval % 1000,0xFF, 0xFF, 0xFF);  // change to different uart
+    xil_printf("%c%c%clandmark.txt=\"(%d.%03d,%d.%03d)\"%c%c%c\n",0xFF,0xFF,0xFF, latval / 1000, latval % 1000,longval / 1000, longval % 1000,0xFF, 0xFF, 0xFF);  // change to different uart
 
     bram[1] = 0x00000001;
     bram[0] = currtime;
@@ -107,7 +106,7 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     bram[1] = 0x00000003;
     bram[0] = radius;
     xil_printf("Radius:\t%u\n", radius);
-    xil_printf("radius.txt=\"%d\"%c%c%c",radius,0xFF,0xFF,0xFF); // change to different uart
+    xil_printf("%c%c%cradius.txt=\"%d\"%c%c%c\n",0xFF,0xFF,0xFF,radius,0xFF,0xFF,0xFF); // change to different uart
     
     usleep(10);
 
@@ -131,6 +130,8 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     xil_printf("Flag clear\n");
     
 }
+
+
 
 // defined in udp_receiver_init in udp_recv() as a callblack function
 void udp_receive_callback(void *arg, // a value i can set so itll send it back when called - not used
@@ -156,6 +157,8 @@ void udp_receive_callback(void *arg, // a value i can set so itll send it back w
     }
 }
 
+
+
 void udp_receiver_init(){// called in main
     receiver_pcb = udp_new();// creates a struct (receiver_pcb) with ip port and callback func
     if (!receiver_pcb) {
@@ -176,6 +179,8 @@ void udp_receiver_init(){// called in main
 
     xil_printf("UDP receiver initialized on port %d\n", LISTEN_PORT);
 }
+
+
 
 void general_initialization() {
     ip_addr_t ipaddr, netmask, gw; // declaration of 3 variables ... ip_addr_t is a struct from lwIP
@@ -200,6 +205,8 @@ void general_initialization() {
     		
 }
 
+
+
 void init_bram() { // saves the bram values and prints them
     xil_printf("=== Initial BRAM contents (%d words) ===\n", BRAM_WORDS);
 
@@ -210,6 +217,8 @@ void init_bram() { // saves the bram values and prints them
                previous[i]);
     }
 } 
+
+
 
 int main() {
     init_bram();
@@ -224,10 +233,3 @@ int main() {
     }
     return 0;
 }
-
-
-
-
-    
-
-
