@@ -85,22 +85,20 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
 
     usleep(10);
 
-    for (int i = 0; i < BRAM_WORDS; i++) {
+    for (int i = 0; i < BRAM_WORDS; i++) { // reset bram
         bram[i] = 0x00000000;
     }
-    bram[1] = 0x00000006;
-    while(bram[1] != 6);
-    xil_printf("flag: %u\ndata: %u\n",bram[2],bram[3]);
+    bram[1] = 0x00000006; // send command to ADC
+    while(bram[1] != 6); // ADC done
     usleep(10);
     u32 radius;
     for (int i = 0; i < BRAM_WORDS; i++) {
-        if(i == 3){
+        if(i == 3){ // loops around first 4 bram words
             radius = bram[3];
         }
         xil_printf("%d :\t%u\n", i, bram[i]); // number 3 shouldnt work bcs of the timing in PL
     }
-
-	for (int i = 0; i < BRAM_WORDS; i++) {
+	for (int i = 0; i < BRAM_WORDS; i++) { // reset bram
         bram[i] = 0x00000000;
     }
 
