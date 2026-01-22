@@ -9,6 +9,8 @@
 #include "lwip/ip_addr.h"
 #include "lwip/pbuf.h"
 #include "netif/xadapter.h"
+#include "xgpio.h"
+#include <math.h>
 
 #define LISTEN_PORT 12345 // port chosen - needs to be changed
 #define BUFFER_SIZE 4096 // log max size
@@ -16,12 +18,13 @@
 #define BRAM_START   0x40000000 // start address of bram
 #define BRAM_END     0x4000000F // end address of bram (i set it so i only see the first words)
 #define BRAM_WORDS   ((BRAM_END - BRAM_START + 1) / 4) // (number of bytes in bram)/(number of bytes per word)
-
+#define GPIO_OUTPUT_CHANNEL 1
+#define GPIO_INPUT_CHANNEL  2
 
 
 volatile uint32_t *bram = (uint32_t *)BRAM_START; // declare bram pointer to the memory address (bram start) volatile means it wont cache it bcs it changes
 uint32_t previous[BRAM_WORDS]; // previous is an array that saves the bram values
-
+XGpio Gpio;
 struct udp_pcb *receiver_pcb; // receiver_pcb points to a udp_pcb - contains port num local-ip
                         // it points to a callback function that activates when receiving data                    
 struct netif server_netif; // server_netif points to netif (contains  ip subnet gateway mac etc)
@@ -36,7 +39,7 @@ void print_ip(const char *msg, ip_addr_t *ip) { // gets called in general_initia
 
 
 
-void format_timestamp(u32 timestamp, char *buffer, size_t buffer_size) { // convert unix data to time
+void format_timestamp(int32_t timestamp, char *buffer, size_t buffer_size) { // convert unix data to time
     // called in pl_transmitter
     time_t raw_time = (time_t)(long)timestamp; // converts the value of timestamp to long and to time_t (for gmtime)
     struct tm *tm_info = gmtime(&raw_time); // converts unix time to a struct (tm)
@@ -47,80 +50,148 @@ void format_timestamp(u32 timestamp, char *buffer, size_t buffer_size) { // conv
     int hour   = tm_info->tm_hour;
     int minute = tm_info->tm_min;
     int second = tm_info->tm_sec;
+
+    hour = hour + 2; // timezone
     snprintf(buffer, buffer_size, "%02d/%02d/%04d %02d:%02d:%02d",
              day, month, year, hour, minute, second);
 }
 
-
+void nextion_sender(char str[]){
+    int len = strlen(str);
+    xil_printf("len: %d\n", len);
+    for(int i=0;i<len;i++){
+        bram[0]=str[i];
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x3);
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0);
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x2){
+            xil_printf("Bit %d of %s failed, current value is %d\n",i, str, XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL));
+            usleep(1000000);
+        }
+        usleep(300);
+    }
+}
 
 void pl_transmitter(char msg[256]){ // called in udp_receive_callback
-    u32 currtime, imptime, latval, longval; // save data from msg to u32
-
+    int32_t currtime, imptime;
+    int32_t latval, longval; 
+    
     //split msg to currtime imptime latval and longval
     memcpy(&currtime, msg, 4);
     memcpy(&imptime, msg + 4, 4);
     memcpy(&latval, msg + 8, 4);
     memcpy(&longval, msg + 12, 4);
-
-    char currstr[32];
-    format_timestamp(currtime, currstr, sizeof(currstr));// convert unix to display time
-    xil_printf("%c%c%ccurt.txt=\"%s\"%c%c%c\n",0xFF,0xFF,0xFF,currstr,0xFF,0xFF,0xFF); // change to different uart
-
-    char impstr[32];
-    format_timestamp(imptime, impstr, sizeof(impstr));// convert unix to display time
-    xil_printf("%c%c%cimpt.txt=\"%s\"%c%c%c\n",0xFF,0xFF,0xFF,impstr,0xFF,0xFF,0xFF); // change to different uart
     
-    xil_printf("%c%c%clandmark.txt=\"(%d.%03d,%d.%03d)\"%c%c%c\n",0xFF,0xFF,0xFF, latval / 1000, latval % 1000,longval / 1000, longval % 1000,0xFF, 0xFF, 0xFF);  // change to different uart
+    
+    currtime = ntohl(latval);
+    imptime = ntohl(longval);
+    latval = ntohl(latval);
+    longval = ntohl(longval);
 
-    bram[1] = 0x00000001;
-    bram[0] = currtime;
-    xil_printf("Current time:\t%u\n", currtime);
+    char bytesFF[] = { 0xFF, 0xFF, 0xFF, '\0' };
+    char endquote[] = "\"";
+
+    
 
     usleep(10);
 
-    bram[1] = 0x00000002;
+    char currstr[32];
+    format_timestamp(currtime, currstr, sizeof(currstr));// convert unix to display time
+
+    
+
+    char impstr[32];
+    format_timestamp(imptime, impstr, sizeof(impstr));// convert unix to display time
+
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x1);
+    bram[0] = currtime;
+    xil_printf("Current time:\t%s\n", currstr);     
+
+    usleep(10);
+
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x2);
     bram[0] = imptime;
-    xil_printf("Impact time:\t%u\n", imptime);
+    xil_printf("Impact time:\t%s\n", impstr);
 
     usleep(10);
 
     for (int i = 0; i < BRAM_WORDS; i++) { // reset bram
         bram[i] = 0x00000000;
     }
-    bram[1] = 0x00000006; // send command to ADC
-    while(bram[1] != 6); // ADC done
-    usleep(10);
     u32 radius;
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x6); // send command to ADC
+    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1); // ADC done
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0);
     for (int i = 0; i < BRAM_WORDS; i++) {
-        if(i == 3){ // loops around first 4 bram words
-            radius = bram[3];
+        previous[i] = bram[i];
+        if(i==1){
+            radius = previous[i];
+            xil_printf("%d\n", previous[i]);
         }
-        xil_printf("%d :\t%u\n", i, bram[i]); // number 3 shouldnt work bcs of the timing in PL
     }
+    usleep(10);
 	for (int i = 0; i < BRAM_WORDS; i++) { // reset bram
         bram[i] = 0x00000000;
     }
-
-    usleep(10);
-
-    bram[1] = 0x00000003;
-    bram[0] = radius;
     xil_printf("Radius:\t%u\n", radius);
-    xil_printf("%c%c%cradius.txt=\"%d\"%c%c%c\n",0xFF,0xFF,0xFF,radius,0xFF,0xFF,0xFF); // change to different uart
     
     usleep(10);
 
-    bram[1] = 0x00000004;
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x4);
     bram[0] = latval;
-    xil_printf("Latitude:\t%.3f\n", (double)latval / 1000);
+    double latitudeDegrees = (double)latval * 180.0 / 2147483647.0;
+    while(latitudeDegrees > 90){latitudeDegrees = latitudeDegrees - 180;}
+    while(latitudeDegrees < - 90){latitudeDegrees = latitudeDegrees + 180;}
+    int numlat = (int)latitudeDegrees;
+    int declat = (int)(fabs(latitudeDegrees - numlat) * 1000);
+    xil_printf("%d.%03d\n", numlat, declat);
     
     usleep(10);
 
-    bram[1] = 0x00000004;
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x5);
     bram[0] = longval;
-    xil_printf("Longitude:\t%.3f\n", (double)longval / 1000);
+    double longitudeDegrees = (double)longval * 180.0 / 2147483647.0;
+    while(longitudeDegrees > 180){longitudeDegrees = longitudeDegrees - 180;}
+    while(longitudeDegrees < 0){longitudeDegrees = longitudeDegrees + 180;}
+    u32 numlong = (int)longitudeDegrees;
+    u32 declong = (int)(fabs(longitudeDegrees - numlong) * 1000);
+    xil_printf("%d.%d\n",numlong,declong);
+
+    char latbuffer[255]; 
+    char longbuffer[255]; 
+    sprintf(latbuffer, "%d.%03d", numlat, declat);
+    sprintf(longbuffer, "%d.%d", numlong, declong);
 
     usleep(10);
+
+    char page0[] = "page 0";
+    nextion_sender(bytesFF);
+    nextion_sender(page0);
+    nextion_sender(bytesFF);
+    usleep(200);
+    char nxtn_curt[] = "curt.txt=\"";
+    nextion_sender(bytesFF);
+    nextion_sender(nxtn_curt);
+    nextion_sender(currstr);
+    nextion_sender(endquote);
+    nextion_sender(bytesFF);
+    usleep(200);
+    char nxtn_impt[] = "impt.txt=\"";
+    nextion_sender(bytesFF);
+    nextion_sender(nxtn_impt);
+    nextion_sender(impstr);
+    nextion_sender(endquote);
+    nextion_sender(bytesFF);
+    usleep(200);
+    char nxtn_location[] = "landmark.txt=\"";
+    char comma[] = ",";
+    nextion_sender(bytesFF);
+    nextion_sender(nxtn_location);
+    nextion_sender(latbuffer);
+    nextion_sender(comma);
+    nextion_sender(longbuffer);
+    nextion_sender(endquote);
+    nextion_sender(bytesFF);
+    usleep(200);
 
     xil_printf("Data uploaded to PL ^_^\n");
 
@@ -202,6 +273,10 @@ void general_initialization() {
     xil_printf("Link is %s", netif_is_link_up(netif) ? "up\n" : "down\n");
     print_ip("Board IP", &ipaddr);
 
+    XGpio_Initialize(&Gpio, 0);
+    XGpio_SetDataDirection(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0); // all outputs
+    XGpio_SetDataDirection(&Gpio, GPIO_INPUT_CHANNEL,  0xFFFFFFFF); // all inputs
+    xil_printf("GPIOs initialized");
     		
 }
 
