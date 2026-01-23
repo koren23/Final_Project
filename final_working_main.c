@@ -41,7 +41,10 @@ void print_ip(const char *msg, ip_addr_t *ip) { // gets called in general_initia
 
 void format_timestamp(int32_t timestamp, char *buffer, size_t buffer_size) { // convert unix data to time
     // called in pl_transmitter
+    xil_printf("0 %u - %d\n",timestamp, timestamp);
     time_t raw_time = (time_t)(long)timestamp; // converts the value of timestamp to long and to time_t (for gmtime)
+    raw_time += 2 * 3600;
+
     struct tm *tm_info = gmtime(&raw_time); // converts unix time to a struct (tm)
 
     int year   = tm_info->tm_year + 1900; //time_t counts time since 1900
@@ -51,14 +54,22 @@ void format_timestamp(int32_t timestamp, char *buffer, size_t buffer_size) { // 
     int minute = tm_info->tm_min;
     int second = tm_info->tm_sec;
 
-    hour = hour + 2; // timezone
+    xil_printf("1 %u - %d\n",year, year);
+    xil_printf("2 %u - %d\n",month, month);
+    xil_printf("3 %u - %d\n",day, day);
+    xil_printf("4 %u - %d\n",hour, hour);
+    xil_printf("5 %u - %d\n",minute, minute);
+    xil_printf("6 %u - %d\n",second, second);
+
+
     snprintf(buffer, buffer_size, "%02d/%02d/%04d %02d:%02d:%02d",
              day, month, year, hour, minute, second);
+
+
 }
 
 void nextion_sender(char str[]){
     int len = strlen(str);
-    xil_printf("len: %d\n", len);
     for(int i=0;i<len;i++){
         bram[0]=str[i];
         XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x3);
@@ -81,11 +92,17 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     memcpy(&latval, msg + 8, 4);
     memcpy(&longval, msg + 12, 4);
     
+    xil_printf("cur0 %d\n",currtime);
+    xil_printf("imp0 %d\n",imptime);
     
     currtime = ntohl(latval);
     imptime = ntohl(longval);
     latval = ntohl(latval);
     longval = ntohl(longval);
+
+    xil_printf("cur1 %d\n",currtime);
+    xil_printf("imp1 %d\n",imptime);
+
 
     char bytesFF[] = { 0xFF, 0xFF, 0xFF, '\0' };
     char endquote[] = "\"";
@@ -97,10 +114,11 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     char currstr[32];
     format_timestamp(currtime, currstr, sizeof(currstr));// convert unix to display time
 
-    
-
     char impstr[32];
     format_timestamp(imptime, impstr, sizeof(impstr));// convert unix to display time
+
+    xil_printf("cur2 %d\n",currstr);
+    xil_printf("imp2 %d\n",impstr);
 
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x1);
     bram[0] = currtime;
@@ -125,7 +143,7 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
         previous[i] = bram[i];
         if(i==1){
             radius = previous[i];
-            xil_printf("%d\n", previous[i]);
+            xil_printf("radius read from bram: %d\n", previous[i]);
         }
     }
     usleep(10);
@@ -133,7 +151,7 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
         bram[i] = 0x00000000;
     }
     xil_printf("Radius:\t%u\n", radius);
-    
+
     usleep(10);
 
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x4);
@@ -143,7 +161,7 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     while(latitudeDegrees < - 90){latitudeDegrees = latitudeDegrees + 180;}
     int numlat = (int)latitudeDegrees;
     int declat = (int)(fabs(latitudeDegrees - numlat) * 1000);
-    xil_printf("%d.%03d\n", numlat, declat);
+    xil_printf("latitude value: %d.%03d\n", numlat, declat);
     
     usleep(10);
 
@@ -154,12 +172,7 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     while(longitudeDegrees < 0){longitudeDegrees = longitudeDegrees + 180;}
     u32 numlong = (int)longitudeDegrees;
     u32 declong = (int)(fabs(longitudeDegrees - numlong) * 1000);
-    xil_printf("%d.%d\n",numlong,declong);
-
-    char latbuffer[255]; 
-    char longbuffer[255]; 
-    sprintf(latbuffer, "%d.%03d", numlat, declat);
-    sprintf(longbuffer, "%d.%d", numlong, declong);
+    xil_printf("longitude value: %d.%d\n",numlong,declong);
 
     usleep(10);
 
@@ -167,23 +180,36 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     nextion_sender(bytesFF);
     nextion_sender(page0);
     nextion_sender(bytesFF);
-    usleep(200);
+    usleep(300);
     char nxtn_curt[] = "curt.txt=\"";
     nextion_sender(bytesFF);
     nextion_sender(nxtn_curt);
     nextion_sender(currstr);
     nextion_sender(endquote);
     nextion_sender(bytesFF);
-    usleep(200);
+    usleep(300);
     char nxtn_impt[] = "impt.txt=\"";
     nextion_sender(bytesFF);
     nextion_sender(nxtn_impt);
     nextion_sender(impstr);
     nextion_sender(endquote);
     nextion_sender(bytesFF);
-    usleep(200);
+    usleep(300);
+    char nxtn_radius[] = "radius.txt=\"";
+    char radiusvalue[255]; 
+    sprintf(radiusvalue, "%u", radius);
+    nextion_sender(bytesFF);
+    nextion_sender(nxtn_radius);
+    nextion_sender(radiusvalue);
+    nextion_sender(endquote);
+    nextion_sender(bytesFF);
+    usleep(300);
     char nxtn_location[] = "landmark.txt=\"";
     char comma[] = ",";
+    char latbuffer[255]; 
+    char longbuffer[255]; 
+    sprintf(latbuffer, "%d.%03d", numlat, declat);
+    sprintf(longbuffer, "%d.%d", numlong, declong);
     nextion_sender(bytesFF);
     nextion_sender(nxtn_location);
     nextion_sender(latbuffer);
@@ -191,7 +217,6 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     nextion_sender(longbuffer);
     nextion_sender(endquote);
     nextion_sender(bytesFF);
-    usleep(200);
 
     xil_printf("Data uploaded to PL ^_^\n");
 
@@ -276,7 +301,7 @@ void general_initialization() {
     XGpio_Initialize(&Gpio, 0);
     XGpio_SetDataDirection(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0); // all outputs
     XGpio_SetDataDirection(&Gpio, GPIO_INPUT_CHANNEL,  0xFFFFFFFF); // all inputs
-    xil_printf("GPIOs initialized");
+    xil_printf("GPIOs initialized\n");
     		
 }
 
