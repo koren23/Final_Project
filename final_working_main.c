@@ -20,7 +20,16 @@
 #define BRAM_WORDS   ((BRAM_END - BRAM_START + 1) / 4) // (number of bytes in bram)/(number of bytes per word)
 #define GPIO_OUTPUT_CHANNEL 1
 #define GPIO_INPUT_CHANNEL  2
-
+#define PIXEL_X_MIN 29
+#define PIXEL_X_MAX 322
+#define PIXEL_Y_MIN 29
+#define PIXEL_Y_MAX 446
+#define LAT_MIN 29.475544
+#define LAT_MAX 33.364086
+#define LON_MIN 33.738858
+#define LON_MAX 36.086421
+#define VERTICAL_METERS   432000.0
+#define HORIZONTAL_METERS 218000.0
 
 volatile uint32_t *bram = (uint32_t *)BRAM_START; // declare bram pointer to the memory address (bram start) volatile means it wont cache it bcs it changes
 uint32_t previous[BRAM_WORDS]; // previous is an array that saves the bram values
@@ -30,8 +39,53 @@ struct udp_pcb *receiver_pcb; // receiver_pcb points to a udp_pcb - contains por
 struct netif server_netif; // server_netif points to netif (contains  ip subnet gateway mac etc)
 u8_t mac_address[6] = {0x00, 0x18, 0x3E, 0x04, 0x81, 0xD6}; // artyz7-10 mac address
 
+volatile void nextion_send(char str[]) {
+    int len = strlen(str);
+    for(int i=0;i<len;i++){
+        bram[0]=str[i];
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x3);
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0);
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x2){
+            xil_printf("Bit %d of %s failed, current value is %d\n",i, str, XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL));
+            usleep(1000000);
+        }
+        usleep(300);
+    }
+}
+void drawPixel(int pixelX, int pixelY) {
+    if(pixelX < PIXEL_X_MIN || pixelX > PIXEL_X_MAX) return;
+    if(pixelY < PIXEL_Y_MIN || pixelY > PIXEL_Y_MAX) return;
 
+    char commandBuffer[32];
+    sprintf(commandBuffer, "cirs %d,%d,1,RED", pixelX, pixelY);
+    nextion_send(commandBuffer);
+    nextion_send("\xFF\xFF\xFF");
+}
+void drawCircle(int centerX, int centerY, int circleRadius) {
+    int currentXOffset = circleRadius;
+    int currentYOffset = 0;
+    int decisionParameter = 1 - circleRadius;
 
+    while (currentXOffset >= currentYOffset) {
+        drawPixel(centerX + currentXOffset, centerY + currentYOffset);
+        drawPixel(centerX + currentYOffset, centerY + currentXOffset);
+        drawPixel(centerX - currentYOffset, centerY + currentXOffset);
+        drawPixel(centerX - currentXOffset, centerY + currentYOffset);
+        drawPixel(centerX - currentXOffset, centerY - currentYOffset);
+        drawPixel(centerX - currentYOffset, centerY - currentXOffset);
+        drawPixel(centerX + currentYOffset, centerY - currentXOffset);
+        drawPixel(centerX + currentXOffset, centerY - currentYOffset);
+
+        currentYOffset++;
+        if (decisionParameter < 0){
+            decisionParameter += (2 * currentYOffset) + 1;
+        }
+        else{
+            currentXOffset--;
+            decisionParameter += (2 * (currentYOffset - currentXOffset)) + 1;
+        }
+    }
+}
 void print_ip(const char *msg, ip_addr_t *ip) { // gets called in general_initialization
     xil_printf("%s: %d.%d.%d.%d\n", msg, ip4_addr1(ip), ip4_addr2(ip), 
                                        ip4_addr3(ip), ip4_addr4(ip));
@@ -41,7 +95,6 @@ void print_ip(const char *msg, ip_addr_t *ip) { // gets called in general_initia
 
 void format_timestamp(int32_t timestamp, char *buffer, size_t buffer_size) { // convert unix data to time
     // called in pl_transmitter
-    xil_printf("0 %u - %d\n",timestamp, timestamp);
     time_t raw_time = (time_t)(long)timestamp; // converts the value of timestamp to long and to time_t (for gmtime)
     raw_time += 2 * 3600;
 
@@ -53,14 +106,6 @@ void format_timestamp(int32_t timestamp, char *buffer, size_t buffer_size) { // 
     int hour   = tm_info->tm_hour;
     int minute = tm_info->tm_min;
     int second = tm_info->tm_sec;
-
-    xil_printf("1 %u - %d\n",year, year);
-    xil_printf("2 %u - %d\n",month, month);
-    xil_printf("3 %u - %d\n",day, day);
-    xil_printf("4 %u - %d\n",hour, hour);
-    xil_printf("5 %u - %d\n",minute, minute);
-    xil_printf("6 %u - %d\n",second, second);
-
 
     snprintf(buffer, buffer_size, "%02d/%02d/%04d %02d:%02d:%02d",
              day, month, year, hour, minute, second);
@@ -92,17 +137,15 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     memcpy(&latval, msg + 8, 4);
     memcpy(&longval, msg + 12, 4);
     
-    xil_printf("cur0 %d\n",currtime);
-    xil_printf("imp0 %d\n",imptime);
+    xil_printf("dec current time before reversing bytes %d\n",currtime);
+    xil_printf("dec impact time before reversing bytes %d\n",imptime);
     
-    currtime = ntohl(latval);
-    imptime = ntohl(longval);
     latval = ntohl(latval);
     longval = ntohl(longval);
-
-    xil_printf("cur1 %d\n",currtime);
-    xil_printf("imp1 %d\n",imptime);
-
+    currtime = ((currtime & 0xFF) << 24) | ((currtime & 0xFF00) << 8) | ((currtime & 0xFF0000) >> 8) | ((currtime >> 24) & 0xFF);
+    imptime = ((imptime & 0xFF) << 24) | ((imptime & 0xFF00) << 8) | ((imptime & 0xFF0000) >> 8) | ((imptime >> 24) & 0xFF);
+    xil_printf("current time post transformation %d\n",currtime);
+    xil_printf("impact timepost transformation %d\n",imptime);
 
     char bytesFF[] = { 0xFF, 0xFF, 0xFF, '\0' };
     char endquote[] = "\"";
@@ -218,6 +261,24 @@ void pl_transmitter(char msg[256]){ // called in udp_receive_callback
     nextion_sender(endquote);
     nextion_sender(bytesFF);
 
+    float mapWidth  = PIXEL_X_MAX - PIXEL_X_MIN; 
+    float mapHeight = PIXEL_Y_MAX - PIXEL_Y_MIN;
+    float target_lon = numlong + 0.001 * declong;
+    float target_lat = numlat + 0.001 * declat;
+    int pixelX = PIXEL_X_MIN + (int)(mapWidth  * (target_lon - LON_MIN) / (LON_MAX - LON_MIN));
+    int pixelY = PIXEL_Y_MIN + (int)(mapHeight * (LAT_MAX - target_lat) / (LAT_MAX - LAT_MIN));
+    float radius_pixels = radius * 0.5 * ((mapHeight / VERTICAL_METERS) + (mapWidth / HORIZONTAL_METERS));
+    int radiusfinal = (int)radius_pixels;
+    xil_printf("Pixel coordinates: X=%d Y=%d, Radius=%d\n", pixelX, pixelY, radiusfinal);
+    char commandBuffer[32];
+    if(pixelX >= PIXEL_X_MIN && pixelX <= PIXEL_X_MAX &&
+       pixelY >= PIXEL_Y_MIN && pixelY <= PIXEL_Y_MAX)
+    {
+        sprintf(commandBuffer, "cirs %d,%d,5,BLACK", pixelX, pixelY);
+        nextion_send(commandBuffer);
+        nextion_send("\xFF\xFF\xFF");
+    }
+    drawCircle(pixelX, pixelY, radiusfinal);
     xil_printf("Data uploaded to PL ^_^\n");
 
     usleep(10);
