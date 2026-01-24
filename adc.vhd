@@ -1,22 +1,21 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
-entity main is
+entity adc is
     Port ( clk : in STD_LOGIC; -- 100MHZ
-           btn : in STD_LOGIC; -- btn for start (will be replaced with flag or whatever)
+           start : in STD_LOGIC; -- start for start (will be replaced with flag or whatever)
            rd : out STD_LOGIC; -- io9
            intr : in STD_LOGIC; -- io8
            cs : out STD_LOGIC; -- io11
            wr : out STD_LOGIC; -- io10
-           counterout : out STD_LOGIC_VECTOR(8 downto 0); -- counter signal for debug
            MA : out STD_LOGIC_VECTOR(3 downto 0); -- write MA address
            D : in STD_LOGIC_VECTOR(7 downto 0); -- io7-0
            DataBusOut : out STD_LOGIC_VECTOR(23 downto 0); -- output of bus
            data_ready : out STD_LOGIC
            );
-end main;
+end adc;
 
-architecture Behavioral of main is
+architecture Behavioral of adc is
  type state_type is (
         idle, 
         start_conv,
@@ -36,7 +35,7 @@ begin
 
                 when idle =>
                     data_ready <= '0';
-                    if btn = '1' then
+                    if start = '1' then
                         MAenable <= '0'; -- MA is 'Z'
                         state <= start_conv;
                         counter <= 0;
@@ -99,13 +98,12 @@ begin
                     if counter < 153 then
                         counter <= counter + 1;
                     else
-                        if btn = '0' then -- wait for btn reset
+                        if start = '0' then -- wait for start reset
                             state <= idle;
                             counter <= 0;
                         end if; 
                     end if;         
             end case;
-            counterout <= std_logic_vector(to_unsigned(counter, counterout'length));
         end if;
     end process;
 
