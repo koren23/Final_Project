@@ -52,7 +52,7 @@ architecture Behavioral of receiver is
     constant    read_id_reg      : STD_LOGIC_VECTOR(7 downto 0) :="00000000";
     constant    read_status_reg  : STD_LOGIC_VECTOR(7 downto 0) :="00001111";
     constant    AGC_TUNE1        : fourbyte_array               := ("11100011", "00000100", "01110000", "10001000");
-    constant    AGC_TUNE2        : sixbyte_array                := ("11100011", "00001100", "00000111", "10101001", "00000010", "00100101"); --E3 0C 07 A9 02 25
+    constant    AGC_TUNE2        : sixbyte_array                := ("11100011", "00001100", "00000111", "10101001", "00000010", "00100101");
     constant    DRX_TUNE2        : sixbyte_array                := ("11100111", "00001000", "01010010", "00000000", "00011010", "00110011");
     constant    LDE_CFG2         : fivebyte_array               := ("11101110", "10000110", "00110000", "00000111", "00010110");
     constant    write_power_ctrl : sixbyte_array                := ("11011110", "00000000", "01001000", "00101000", "00001000", "00001110");
