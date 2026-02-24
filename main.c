@@ -1,3 +1,4 @@
+
 #include "xparameters.h"
 #include "xil_printf.h"
 #include "xgpio.h"
@@ -47,8 +48,8 @@ volatile void nextion_sender(char str[]) {
     int len = strlen(str);
     for(int i=0;i<len;i++){
         bram[0]=str[i];
-        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x3); // Nextion start flag
-        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0); // Idle flag
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x7); // Nextion start flag
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x6); // Temp Idle flag
         while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x2){ // Nextion Done flag
             xil_printf("Bit %d of %s failed, current value is %d\n",i, str, XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL));
             usleep(1000000);
@@ -116,16 +117,18 @@ void format_timestamp(int32_t timestamp, char *buffer, size_t buffer_size) {
 
 void pl_transmitter(char msg[256]) {
     int32_t currtime, imptime;
-    int32_t latval, longval; 
+    int32_t latval, longval;
+    int32_t radius;
     memcpy(&currtime, msg, 4);
     memcpy(&imptime, msg + 4, 4);
-    memcpy(&latval, msg + 8, 4);
-    memcpy(&longval, msg + 12, 4);
+    memcpy(&radius, msg + 8, 3);
+    memcpy(&latval, msg + 11, 4);
+    memcpy(&longval, msg + 15, 4);
     
-    xil_printf("dec current time before reversing bytes %d\n",currtime);
-    xil_printf("dec impact time before reversing bytes %d\n",imptime);
     latval = ntohl(latval);
     longval = ntohl(longval);
+    xil_printf("dec current time before reversing bytes %d\n",currtime);
+    xil_printf("dec impact time before reversing bytes %d\n",imptime);
     currtime = ((currtime & 0xFF) << 24) | ((currtime & 0xFF00) << 8) | ((currtime & 0xFF0000) >> 8) | ((currtime >> 24) & 0xFF);
     imptime = ((imptime & 0xFF) << 24) | ((imptime & 0xFF00) << 8) | ((imptime & 0xFF0000) >> 8) | ((imptime >> 24) & 0xFF);
     xil_printf("current time post transformation %d\n",currtime);
@@ -147,21 +150,13 @@ void pl_transmitter(char msg[256]) {
     xil_printf("Impact time:\t%s\n", impstr);
 
     usleep(10);
-    for (int i = 0; i < BRAM_WORDS; i++) 
-        bram[i] = 0x00000000;
-    u32 radius;
-    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x6); // ADC START
-    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1); // ADC done
-    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0);
-    for (int i = 0; i < BRAM_WORDS; i++) {
-        previous[i] = bram[i];
-        if(i==1)
-            radius = previous[i];
-    }
-
-    usleep(10);
-	for (int i = 0; i < BRAM_WORDS; i++)
-        bram[i] = 0x00000000;
+    bram[0] = 0;
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x3);
+    bram[0] = radius;
+    radius =
+        ((uint32_t)(uint8_t)msg[8]  << 16) |
+        ((uint32_t)(uint8_t)msg[9]  << 8)  |
+        ((uint32_t)(uint8_t)msg[10]);
     xil_printf("Radius:\t%u\n", radius);
 
     usleep(10);
@@ -241,6 +236,7 @@ void pl_transmitter(char msg[256]) {
         nextion_sender("\xFF\xFF\xFF");
     }
     drawCircle(pixelX, pixelY, radiusfinal);
+    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0); // IDLE
     xil_printf("Data uploaded to PL ^_^\n");
 }
 
