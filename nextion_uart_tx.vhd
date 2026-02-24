@@ -26,8 +26,8 @@ begin
             case state is
             
                 when idle =>
+                    flagout <= '0';
                     if flag = '1' and flag_prev = '0' then
-                        flagout <= '0';
                         tempbyte <= databyte;
                         state <= start;
                     else
@@ -72,3 +72,5 @@ begin
         end if;
     end process;
 end Behavioral;
+
+
