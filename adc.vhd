@@ -3,15 +3,15 @@ use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 entity adc is
     Port ( clk : in STD_LOGIC; -- 100MHZ
-           start : in STD_LOGIC; -- start for start (will be replaced with flag or whatever)
-           rd : out STD_LOGIC; -- io9
-           intr : in STD_LOGIC; -- io8
-           cs : out STD_LOGIC; -- io11
-           wr : out STD_LOGIC; -- io10
+           start : in STD_LOGIC; -- flag for start
+           rd : out STD_LOGIC; 
+           intr : in STD_LOGIC;
+           cs : out STD_LOGIC;
+           wr : out STD_LOGIC;
            MA : out STD_LOGIC_VECTOR(3 downto 0); -- write MA address
-           D : in STD_LOGIC_VECTOR(7 downto 0); -- io7-0
-           DataBusOut : out STD_LOGIC_VECTOR(23 downto 0); -- output of bus
-           data_ready : out STD_LOGIC
+           D : in STD_LOGIC_VECTOR(7 downto 0); -- data bus from ADC
+           DataBusOut : out STD_LOGIC_VECTOR(7 downto 0); -- data output to BRAM
+           data_ready : out STD_LOGIC -- flag
            );
 end adc;
 
@@ -23,7 +23,7 @@ architecture Behavioral of adc is
         read_data
     );
 signal state          : state_type := idle;
-signal counter : integer range 0 to 1024 :=0;
+signal counter : integer range 0 to 255 :=0;
 signal MAenable : std_logic :='0'; -- 0 is Z 1 writes data
 signal intrval : std_logic; -- saves first value of intr
 begin
@@ -87,8 +87,7 @@ begin
                     else -- if intr is up
                         if counter = 151 then
                             rd <= '1'; -- rise RD
-                            DataBusOut <= std_logic_vector(to_unsigned(to_integer(unsigned(D)) * 5e6 / 256,DataBusOut'length));  -- in uV
-                            -- convert D to integer multiply by 5e6/256 which results w voltage , convert it to stdlogic
+                            DataBusOut <= D;
                             data_ready <= '1';
                         elsif counter = 152 then
                             cs <= '1'; -- rise CS
