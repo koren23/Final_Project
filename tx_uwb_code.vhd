@@ -148,14 +148,14 @@ begin
              ------------------------------------ 
                 when IDLE =>         
                     LED <= '0';
-                        CSn <= '0';
-                        resetMOSI <= false;
-                        init_count <= 0;
-                        MOSI <= current_byte(7); -- send last bit
-                        
-                        delay_target <= 3; -- call delay func
-                        return_state <= SEND_BYTE;
-                        state <= DELAY;
+                    CSn <= '0';
+                    resetMOSI <= false;
+                    init_count <= 0;
+                    MOSI <= current_byte(7); -- send last bit
+                    
+                    delay_target <= 3; -- call delay func
+                    return_state <= SEND_BYTE;
+                    state <= DELAY;
             ------------------------------------
                 when DELAY =>
                     if resetMOSI <= false then
@@ -328,6 +328,7 @@ begin
             ------------------------------------
                 when WAIT_FOR_START =>
                     CSn <= '1';
+                    init_count <= 10;
                     case START is
                         when "000" =>
                             state <= WRITE_TO_BUFFER;
@@ -337,11 +338,7 @@ begin
                         when "010" => -- time of impact
                             DIN_TEMP(119 downto 88) <= DIN;
                         when "011" => -- radius
-                        
-                        
-                                -- not set yet
-                                
-                                
+                            DIN_TEMP(87 downto 64) <= DIN(23 downto 0);
                         when "100" => -- latidue
                             DIN_TEMP(63 downto 32) <= DIN;
                         when "101" => -- longitude
