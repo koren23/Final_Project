@@ -330,9 +330,6 @@ begin
                     CSn <= '1';
                     init_count <= 10;
                     case START is
-                        when "000" =>
-                            state <= WRITE_TO_BUFFER;
-                            buffer_counter <= 0;
                         when "001" => -- time now
                             DIN_TEMP(151 downto 120) <= DIN;
                         when "010" => -- time of impact
@@ -343,6 +340,8 @@ begin
                             DIN_TEMP(63 downto 32) <= DIN;
                         when "101" => -- longitude
                             DIN_TEMP(31 downto 0) <= DIN;
+                            state <= WRITE_TO_BUFFER;
+                            buffer_counter <= 0;
                         when others =>
                         
                     end case;
