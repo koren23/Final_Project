@@ -18,6 +18,7 @@ entity bcontroller is
         
         uwbtx_f : out std_logic_vector(2 downto 0);
         uwbtx_d : out std_logic_vector(31 downto 0);
+        uwb_in  : in  std_logic;
         
         nextion_f : out std_logic;
         nextion_d : out std_logic_vector(7 downto 0);
@@ -39,7 +40,7 @@ type state_type is (
             
             send_read_data_command,
             read_data,
-            
+            uwb_flag_state,
             nextion,
             tempIDLE
             
@@ -47,11 +48,10 @@ type state_type is (
             
         );
 signal state : state_type := read_flag;
-signal temp_data : std_logic_vector(23 downto 0) := (others => '0');
 signal temp_flag : std_logic_vector(2 downto 0) := (others => '0');
-signal loop_counter : integer range 0 to 255 :=0;
-signal tempcommand : std_logic_vector (183 downto 0) :="1111111111111111111111110110001001100001011101000111010001100101011100100111100100101110011101000111100001110100001111010010001000000000000000000111011000100010111111111111111111111111";
-    -- binary for FFFFFFbattery.txt="  %"FFFFFF
+signal loop_counter : integer range 0 to 255 :=36;
+signal tempcommand : std_logic_vector (287 downto 0) :="111111111111111111111111011000100110000101110100011101000110010101110010011110010010111001110100011110000111010000111101001000100000000000000000011101100010001011111111111111111111111101101100011011110110011101101111001011100111000001101001011000110011110100000000111111111111111111111111";
+    -- binary for 0xFFFFFFbattery.txt="0x0000v"0xFFFFFFlogo.pic=0x000xFFFFFF
 signal scaled_value : integer range 0 to 255;
 signal tens         : integer range 0 to 9;
 signal ones         : integer range 0 to 9;
@@ -65,12 +65,13 @@ begin
                
             when read_flag => -- read flag gpio
                 nextion_f <= '0';
-                uwbtx_f <= "000";
                 ADCFLAGOUT <= '1';
                 if gpio_in = "000" then
-                    temp_data <= (others => '0');
+                    uwbtx_f <= "000";
+                    temp_flag <= (others => '0');
                     state <= wait_for_adc_data;
                 else -- NOT idle
+                    gpio_out <= "00";
                     state <= send_read_data_command;
                     temp_flag <= gpio_in; -- save the flag in buffer
                 end if;
@@ -84,9 +85,18 @@ begin
                     scaled_value <= (to_integer(unsigned(ADCDATAIN)) * 42) / 256;
                     tens <= scaled_value / 10;
                     ones <= scaled_value mod 10; 
-                    tempcommand(55 downto 48) <= std_logic_vector(to_unsigned(tens + 48, 8));
-                    tempcommand(47 downto 40) <= std_logic_vector(to_unsigned(ones + 48, 8));
+                    tempcommand(159 downto 152) <= std_logic_vector(to_unsigned(tens + 48, 8));
+                    tempcommand(151 downto 144) <= std_logic_vector(to_unsigned(ones + 48, 8));
                     ADCFLAGOUT <= '0';
+                    if (to_integer(unsigned(ADCDATAIN)) * 42) / 256 >= 11 then
+                        tempcommand(31 downto 24) <= "00110100";
+                    elsif (to_integer(unsigned(ADCDATAIN)) * 42) / 256 >= 9 then
+                        tempcommand(31 downto 24) <= "00110101";
+                    elsif (to_integer(unsigned(ADCDATAIN)) * 42) / 256 >= 7 then
+                        tempcommand(31 downto 24) <= "00110110";
+                    else
+                        tempcommand(31 downto 24) <= "00110111";
+                    end if;
                 end if;
                 
             when return_adc_data => -- write adc value to nextion
@@ -98,12 +108,12 @@ begin
                         loop_counter <= loop_counter - 1;
                     else
                         state <= read_flag;
-                        loop_counter <= 22;
+                        loop_counter <= 35;
                     end if;
                 else
                     state <= send_read_data_command;
                     temp_flag <= gpio_in;
-                    loop_counter <= 22;
+                    loop_counter <= 35;
                 end if;
                 
                 
@@ -132,8 +142,15 @@ begin
                     nextion_d <= din(7 downto 0);
                     state <= nextion;
                 else
-                    uwbtx_f <= temp_data(2 downto 0); -- 1 2 for time data 3 radius 4 5 for location (uwb flags)
+                    state <= uwb_flag_state;
                     uwbtx_d <= din;
+                end if;
+                
+            when uwb_flag_state =>
+                uwbtx_f <= temp_flag; -- 1 2 for time data 3 radius 4 5 for location (uwb flags)
+                if uwb_in = '1' then
+                    state <= read_flag;
+                    gpio_out <= "01"; -- uwb confirm
                 end if;
                 
             when nextion =>
@@ -149,7 +166,7 @@ begin
             when tempIDLE =>
                 nextion_f <= '0';
                 if gpio_in = "000" then
-                    temp_data <= (others => '0');
+                    temp_flag <= (others => '0');
                     state <= wait_for_adc_data;
                 else -- NOT idle
                     state <= send_read_data_command;
@@ -176,6 +193,6 @@ end Behavioral;
 
 --gpioOUT:
 --00    idle
---01
+--01    uwb confirm
 --10    nextion page map
 --01
