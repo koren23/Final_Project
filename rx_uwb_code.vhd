@@ -2,7 +2,7 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.ALL;
 
-entity receiver is
+entity uwbreceiver is
     Port (
         MISO        : in  STD_LOGIC;
         MOSI        : out STD_LOGIC;
@@ -13,9 +13,9 @@ entity receiver is
         DOUT        : out STD_LOGIC_VECTOR(39 downto 0);     -- data received from dw1000
         BUFFER_DOUT : out STD_LOGIC_VECTOR(151 downto 0)
     );
-end receiver;
+end uwbreceiver;
 
-architecture Behavioral of receiver is
+architecture Behavioral of uwbreceiver is
 -- state machine
     type state_type is (
         IDLE,            -- wait for button
