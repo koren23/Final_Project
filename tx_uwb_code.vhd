@@ -12,6 +12,7 @@ entity transmitter is
         CLOCK       : in  STD_LOGIC;                         -- 100MHz system clock
         START       : in  STD_LOGIC_vector(2 downto 0);      -- starts tx
         DOUT        : out STD_LOGIC_VECTOR(39 downto 0);     -- data received from dw1000 SPI
+        bram_out    : out STD_LOGIC;
         DIN         : in  STD_LOGIC_VECTOR(31 downto 0)      -- data to transmit
     );
 end transmitter;
@@ -332,18 +333,23 @@ begin
                     case START is
                         when "001" => -- time now
                             DIN_TEMP(151 downto 120) <= DIN;
+                            bram_out <= '1';
                         when "010" => -- time of impact
                             DIN_TEMP(119 downto 88) <= DIN;
+                            bram_out <= '1';
                         when "011" => -- radius
                             DIN_TEMP(87 downto 64) <= DIN(23 downto 0);
+                            bram_out <= '1';
                         when "100" => -- latidue
                             DIN_TEMP(63 downto 32) <= DIN;
+                            bram_out <= '1';
                         when "101" => -- longitude
                             DIN_TEMP(31 downto 0) <= DIN;
                             state <= WRITE_TO_BUFFER;
                             buffer_counter <= 0;
+                            bram_out <= '1';
                         when others =>
-                        
+                            bram_out <= '0';
                     end case;
             ------------------------------------
                 when WRITE_TO_BUFFER =>
