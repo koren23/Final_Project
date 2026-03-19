@@ -1,0 +1,7 @@
+//arch = zynq; split = false; format = BIN
+the_ROM_image:
+{
+	[bootloader]C:\Users\koren\final\fsbl.elf
+	C:\Users\koren\final\first.bit
+	C:\Users\koren\final\hello_world.elf
+}
