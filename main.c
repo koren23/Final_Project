@@ -121,44 +121,29 @@ void pl_transmitter(char msg[256]) {
     memcpy(&latval, msg + 11, 4);
     memcpy(&longval, msg + 15, 4);
 
-    latval = ntohl(latval);
-    longval = ntohl(longval);
-    xil_printf("dec current time before reversing bytes %d\n",currtime);
-    xil_printf("dec impact time before reversing bytes %d\n",imptime);
+    latval = ((latval & 0xFF) << 24) | ((latval & 0xFF00) << 8) | ((latval & 0xFF0000) >> 8) | ((latval >> 24) & 0xFF);
+    longval = ((longval & 0xFF) << 24) | ((longval & 0xFF00) << 8) | ((longval & 0xFF0000) >> 8) | ((longval >> 24) & 0xFF);
     currtime = ((currtime & 0xFF) << 24) | ((currtime & 0xFF00) << 8) | ((currtime & 0xFF0000) >> 8) | ((currtime >> 24) & 0xFF);
     imptime = ((imptime & 0xFF) << 24) | ((imptime & 0xFF00) << 8) | ((imptime & 0xFF0000) >> 8) | ((imptime >> 24) & 0xFF);
-    xil_printf("current time post transformation %d\n",currtime);
-    xil_printf("impact timepost transformation %d\n",imptime);
-    radius =
-        ((uint32_t)(uint8_t)msg[8]  << 16) |
-        ((uint32_t)(uint8_t)msg[9]  << 8)  |
-        ((uint32_t)(uint8_t)msg[10]);
+    radius = ((uint32_t)(uint8_t)msg[8]  << 16) |((uint32_t)(uint8_t)msg[9]  << 8)  |((uint32_t)(uint8_t)msg[10]);
 
     usleep(2000);
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x1);
-    bram[0] = currtime;
-    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
-    
-
+        bram[0] = currtime;
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x2);
-    bram[0] = imptime;
-    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
-    
+        bram[0] = imptime;
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x3);
-    bram[0] = radius;
-    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
-
-    
+        bram[0] = radius;
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x4);
-    bram[0] = latval;
-    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
-    XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0);
-
-    bram[0] = longval; 
+        bram[0] = latval;
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
+        XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x0);
     XGpio_DiscreteWrite(&Gpio, GPIO_OUTPUT_CHANNEL, 0x5);
-    bram[0] = longval; 
-    while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
-    
+        bram[0] = longval; 
+        while(XGpio_DiscreteRead(&Gpio, GPIO_INPUT_CHANNEL) != 0x1);
     xil_printf("%x %x %x %x %x\n", longval, latval, radius, imptime,currtime);
 
 
@@ -171,56 +156,51 @@ void pl_transmitter(char msg[256]) {
     xil_printf("Radius:\t%u\n", radius);
 
     double latitudeDegrees = (double)latval * 180.0 / 2147483647.0; // 2147483647 = 2^31 - 1
-    while(latitudeDegrees > 90){latitudeDegrees = latitudeDegrees - 180;} 
-    while(latitudeDegrees < - 90){latitudeDegrees = latitudeDegrees + 180;}
-    int numlat = (int)latitudeDegrees;
-    int declat = (int)(fabs(latitudeDegrees - numlat) * 1000);
+        while(latitudeDegrees > 90){latitudeDegrees = latitudeDegrees - 180;} 
+        while(latitudeDegrees < - 90){latitudeDegrees = latitudeDegrees + 180;}
+        int numlat = (int)latitudeDegrees;
+        int declat = (int)(fabs(latitudeDegrees - numlat) * 1000);
     xil_printf("latitude value: %d.%03d\n", numlat, declat);
-
     double longitudeDegrees = (double)longval * 180.0 / 2147483647.0; // 2147483647 = 2^31 - 1
-    while(longitudeDegrees > 180){longitudeDegrees = longitudeDegrees - 180;}
-    while(longitudeDegrees < 0){longitudeDegrees = longitudeDegrees + 180;}
-    u32 numlong = (int)longitudeDegrees;
-    u32 declong = (int)(fabs(longitudeDegrees - numlong) * 1000);
+        while(longitudeDegrees > 180){longitudeDegrees = longitudeDegrees - 180;}
+        while(longitudeDegrees < 0){longitudeDegrees = longitudeDegrees + 180;}
+        u32 numlong = (int)longitudeDegrees;
+        u32 declong = (int)(fabs(longitudeDegrees - numlong) * 1000);
     xil_printf("longitude value: %d.%d\n",numlong,declong);
 
     usleep(10);
-    nextion_sender("\xFF\xFF\xFF");
-    nextion_sender("page 0");
-    nextion_sender("\xFF\xFF\xFF");
+        nextion_sender("\xFF\xFF\xFF");
+        nextion_sender("page 0");
+        nextion_sender("\xFF\xFF\xFF");
     usleep(300);
-
     char nxtn_curt[] = "curt.txt=\"";
-    nextion_sender(nxtn_curt);
-    nextion_sender(currstr);
-    nextion_sender("\"\xFF\xFF\xFF");
-    usleep(300);
-
+        nextion_sender(nxtn_curt);
+        nextion_sender(currstr);
+        nextion_sender("\"\xFF\xFF\xFF");
+        usleep(300);
     char nxtn_impt[] = "impt.txt=\"";
-    nextion_sender(nxtn_impt);
-    nextion_sender(impstr);
-    nextion_sender("\"\xFF\xFF\xFF");
+        nextion_sender(nxtn_impt);
+        nextion_sender(impstr);
+        nextion_sender("\"\xFF\xFF\xFF");
     usleep(300);
-
     char nxtn_radius[] = "radius.txt=\"";
     char radiusvalue[255]; 
     sprintf(radiusvalue, "%u", radius);
-    nextion_sender(nxtn_radius);
-    nextion_sender(radiusvalue);
-    nextion_sender("\"\xFF\xFF\xFF");
+        nextion_sender(nxtn_radius);
+        nextion_sender(radiusvalue);
+        nextion_sender("\"\xFF\xFF\xFF");
     usleep(300);
-
     char nxtn_location[] = "landmark.txt=\"";
     char latbuffer[255]; 
     char longbuffer[255]; 
     sprintf(latbuffer, "%d.%03d", numlat, declat);
     sprintf(longbuffer, "%d.%d", numlong, declong);
-    nextion_sender("\xFF\xFF\xFF");
-    nextion_sender(nxtn_location);
-    nextion_sender(latbuffer);
-    nextion_sender(",");
-    nextion_sender(longbuffer);
-    nextion_sender("\"\xFF\xFF\xFF");
+        nextion_sender("\xFF\xFF\xFF");
+        nextion_sender(nxtn_location);
+        nextion_sender(latbuffer);
+        nextion_sender(",");
+        nextion_sender(longbuffer);
+        nextion_sender("\"\xFF\xFF\xFF");
 
     float mapWidth  = MAP_PIXEL_X_MAX - MAP_PIXEL_X_MIN; 
     float mapHeight = MAP_PIXEL_Y_MAX - MAP_PIXEL_Y_MIN;
@@ -248,9 +228,6 @@ void pl_transmitter(char msg[256]) {
 
 
 void udp_receive_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, const ip_addr_t *addr, u16_t port) {
-    (void)arg;
-    (void)pcb;
-
     if (p != NULL) {
         char msg[256] = {0}; 
         size_t len;
