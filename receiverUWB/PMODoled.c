@@ -220,30 +220,22 @@ void gpio_init()
     XGpio_DiscreteWrite(&GpioCtrl, 2, 0x00);
 }
 
-void oled_handler(char str[])
+void oled_handler(char str[38])
 {
-    unsigned int n1, n2, n3, n4, n5;
-    sscanf(str, "%u %u %u %u %u",
-           &n1, &n2, &n3, &n4, &n5);
-
     char part1[9];
     char part2[9];
     char part3[7];
     char part4[9];
     char part5[9];
-
-    sprintf(part1, "%08X", n1);
-    sprintf(part2, "%08X", n2);
-    sprintf(part3, "%06X", n3);
-    sprintf(part4, "%08X", n4);
-    sprintf(part5, "%08X", n5);
+    sscanf(str, "%8s %8s %6s %8s %8s",
+           part1, part2, part3, part4, part5);
 
     oled_clear();
 
     char line0[20];
     sprintf(line0, "%s %s", part1, part2);
     oled_print(0, 0, line0);
-
+    
     oled_print(0, 1, part3);
 
     char line2[20];
